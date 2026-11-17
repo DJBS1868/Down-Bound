@@ -1136,6 +1136,27 @@ svg {
   pointer-events: none;
 }
 
+/* While a hero is selected, the whole placeable floor band lights up. */
+.cave-world.placing::before {
+  position: absolute;
+  z-index: 2;
+  top: var(--floor-line, 62%);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: linear-gradient(180deg, rgba(244, 187, 85, 0.02), rgba(244, 187, 85, 0.1));
+  border-top: 1px dashed rgba(244, 187, 85, 0.38);
+  box-shadow: inset 0 18px 26px -18px rgba(244, 187, 85, 0.35);
+  content: "";
+  pointer-events: none;
+  animation: floor-pulse 1.7s ease-in-out infinite;
+}
+
+@keyframes floor-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
 .cart-dock {
   position: absolute;
   z-index: 5;
@@ -1254,6 +1275,25 @@ svg {
   pointer-events: none;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 24px rgba(244, 187, 85, 0.35);
   transform: translate(-50%, -50%) scale(1.06);
+  transition: border-color 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+}
+
+.drag-ghost::after {
+  position: absolute;
+  inset: -9px;
+  border: 2px dashed rgba(137, 199, 165, 0.65);
+  border-radius: 50%;
+  content: "";
+}
+
+.drag-ghost.invalid {
+  border-color: rgba(226, 100, 80, 0.85);
+  filter: grayscale(0.7);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 24px rgba(226, 100, 80, 0.3);
+}
+
+.drag-ghost.invalid::after {
+  border-color: rgba(226, 100, 80, 0.8);
 }
 
 .drag-ghost .portrait {
@@ -1265,6 +1305,7 @@ svg {
 .cave-hint {
   position: absolute;
   z-index: 4;
+  pointer-events: none;
   top: 94px;
   left: 50%;
   display: flex;
@@ -1293,6 +1334,74 @@ svg {
   background: #89c7a5;
   box-shadow: 0 0 8px rgba(137, 199, 165, 0.75);
   content: "";
+}
+
+/* Spawn preview: translucent foe silhouettes standing where they will
+   appear, with a pulsing emergence ring. Tap-through for placement. */
+.foe-ghost {
+  position: absolute;
+  z-index: 3;
+  top: calc(var(--y, 70) * 1%);
+  left: calc(var(--x, 80) * 1%);
+  display: flex;
+  width: 44px;
+  align-items: center;
+  flex-direction: column;
+  pointer-events: none;
+  opacity: 0.72;
+  transform: translate(-50%, -100%);
+}
+
+.foe-ghost.boss {
+  width: 60px;
+}
+
+.foe-ghost-sprite {
+  width: 100%;
+  filter: drop-shadow(0 0 7px rgba(226, 100, 80, 0.4));
+  animation: ghost-breath 2.4s ease-in-out infinite;
+}
+
+.foe-ghost.boss .foe-ghost-sprite {
+  animation-delay: -1.2s;
+}
+
+.foe-ghost-ring {
+  position: absolute;
+  bottom: -4px;
+  width: 100%;
+  height: 11px;
+  border: 1px dashed rgba(232, 122, 100, 0.65);
+  border-radius: 50%;
+  background: rgba(226, 100, 80, 0.09);
+  animation: ghost-ring 2.4s ease-in-out infinite;
+}
+
+.foe-ghost-tag {
+  position: absolute;
+  bottom: -15px;
+  left: 50%;
+  padding: 1.5px 5px;
+  border: 1px solid rgba(232, 122, 100, 0.3);
+  border-radius: 999px;
+  background: rgba(24, 13, 12, 0.72);
+  color: #eba996;
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+@keyframes ghost-breath {
+  0%, 100% { opacity: 0.72; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-3px); }
+}
+
+@keyframes ghost-ring {
+  0%, 100% { opacity: 0.55; transform: scaleX(1); }
+  50% { opacity: 1; transform: scaleX(1.18); }
 }
 
 .deploy-pad {
@@ -1648,16 +1757,17 @@ svg {
 
 .unit-label.hero {
   --lift: clamp(57.5px, 17.5vw, 77.5px);
-  transform: translate(calc(-50% - 7px), calc(-100% - var(--lift) - 3px));
+  transform: translate(calc(-50% - 7px - var(--sx, 0) * 5px), calc(-100% - var(--lift) - 3px));
 }
 
+/* Enemy plates hang below the feet: hero names live above the brawl, foe
+   bars below it, so the two never fight for the same strip of screen. */
 .unit-label.enemy {
-  --lift: clamp(42px, 12.5vw, 56px);
-  transform: translate(calc(-50% + 7px), calc(-100% - var(--lift) - 3px));
+  transform: translate(calc(-50% + 7px + var(--sx, 0) * 5px), 8px);
 }
 
 .unit-label.enemy.boss {
-  --lift: clamp(64px, 19vw, 88px);
+  transform: translate(calc(-50% + 7px + var(--sx, 0) * 5px), 10px);
 }
 
 .unit-label .label-name {
@@ -1699,6 +1809,13 @@ svg {
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* Free placement means fights can come from either side; the sprite turns
+   toward its opponent. Applied to the svg so animations keep their own
+   transforms. */
+.battle-unit.flip .unit-sprite svg {
+  transform: scaleX(-1);
 }
 
 .unit-figure::after {
@@ -1832,19 +1949,62 @@ svg {
   transform-origin: 50% 100%;
 }
 
-.battle-unit.strike-right .unit-figure { animation: strike-right 0.3s ease-out; }
-.battle-unit.strike-left .unit-figure { animation: strike-left 0.3s ease-out; }
+.battle-unit.strike-right .unit-figure { animation: strike-right 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.25); }
+.battle-unit.strike-left .unit-figure { animation: strike-left 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.25); }
 
+/* Windup, lunge into the blow, then settle back on the spot. */
 @keyframes strike-right {
   0%, 100% { transform: none; }
-  30% { transform: translate(4px, -1px) rotate(3.5deg); }
-  56% { transform: translate(-1px, 1px) rotate(-1.2deg); }
+  24% { transform: translate(-3px, 1px) rotate(-5deg) scale(0.97); }
+  48% { transform: translate(9px, -2px) rotate(7deg) scale(1.07); }
+  72% { transform: translate(4px, 0) rotate(2deg) scale(1.02); }
 }
 
 @keyframes strike-left {
   0%, 100% { transform: none; }
-  30% { transform: translate(-4px, -1px) rotate(-3.5deg); }
-  56% { transform: translate(1px, 1px) rotate(1.2deg); }
+  24% { transform: translate(3px, 1px) rotate(5deg) scale(0.97); }
+  48% { transform: translate(-9px, -2px) rotate(-7deg) scale(1.07); }
+  72% { transform: translate(-4px, 0) rotate(-2deg) scale(1.02); }
+}
+
+/* Weapon sweep arc drawn over the attacker while they strike. */
+.battle-unit .unit-figure::before {
+  position: absolute;
+  z-index: 3;
+  top: 16%;
+  left: 50%;
+  width: 38px;
+  height: 38px;
+  margin: -19px 0 0 -19px;
+  border-radius: 50%;
+  background: conic-gradient(from 210deg, transparent 0 16%, rgba(255, 236, 190, 0.95) 26% 42%, transparent 54%);
+  -webkit-mask: radial-gradient(circle, transparent 30%, #000 36% 48%, transparent 55%);
+  mask: radial-gradient(circle, transparent 30%, #000 36% 48%, transparent 55%);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.6) rotate(-70deg);
+}
+
+.battle-unit.enemy .unit-figure::before {
+  background: conic-gradient(from 150deg, transparent 0 16%, rgba(255, 172, 148, 0.95) 26% 42%, transparent 54%);
+}
+
+.battle-unit.strike-right .unit-figure::before { animation: arc-right 0.34s ease-out; }
+.battle-unit.strike-left .unit-figure::before { animation: arc-left 0.34s ease-out; }
+
+@keyframes arc-right {
+  0% { opacity: 0; transform: scale(0.6) rotate(-70deg); }
+  28% { opacity: 1; }
+  62% { opacity: 0.9; transform: scale(1.05) rotate(35deg); }
+  100% { opacity: 0; transform: scale(1.18) rotate(58deg); }
+}
+
+@keyframes arc-left {
+  0% { opacity: 0; transform: scale(0.6) rotate(70deg); }
+  28% { opacity: 1; }
+  62% { opacity: 0.9; transform: scale(1.05) rotate(-35deg); }
+  100% { opacity: 0; transform: scale(1.18) rotate(-58deg); }
 }
 
 .battle-unit:not(.walking):not(.dying) .unit-sprite {
@@ -1860,9 +2020,24 @@ svg {
   animation: hit-flash 0.26s ease-out;
 }
 
+/* The victim jolts on impact — reads as a real connection, not just a tint. */
+.battle-unit.hit .unit-figure {
+  animation: hit-jolt 0.26s ease-out;
+}
+
+.battle-unit.hit.crit-shake .unit-figure {
+  animation: hit-jolt 0.34s ease-out;
+}
+
 @keyframes hit-flash {
   0%, 100% { filter: none; }
   40% { filter: brightness(2.2) saturate(0.4); }
+}
+
+@keyframes hit-jolt {
+  0%, 100% { transform: none; }
+  30% { transform: translate(2px, -1px) rotate(-2deg) scale(1.05); }
+  62% { transform: translate(-1px, 1px) rotate(1deg) scale(0.99); }
 }
 
 .fx-layer {
@@ -1917,6 +2092,64 @@ svg {
   box-shadow: 0 0 14px rgba(244, 187, 85, 0.38);
   transform: translate(-50%, -50%);
   animation: slash-pop 0.36s ease-out both;
+}
+
+.slash-fx.crit {
+  width: 56px;
+  height: 56px;
+  border-width: 3px;
+  box-shadow: 0 0 22px rgba(244, 187, 85, 0.55);
+}
+
+/* Crescent sweep drawn across the impact point. */
+.slash-arc {
+  position: absolute;
+  z-index: 19;
+  width: 52px;
+  height: 52px;
+  background: conic-gradient(from 200deg, transparent 0 18%, rgba(255, 236, 190, 0.95) 30% 46%, transparent 58%);
+  -webkit-mask: radial-gradient(circle, transparent 34%, #000 40% 55%, transparent 62%);
+  mask: radial-gradient(circle, transparent 34%, #000 40% 55%, transparent 62%);
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(var(--tilt, 0deg));
+  animation: arc-sweep 0.36s ease-out both;
+}
+
+.slash-arc.enemy {
+  background: conic-gradient(from 20deg, transparent 0 18%, rgba(255, 168, 140, 0.95) 30% 46%, transparent 58%);
+}
+
+.slash-arc.crit {
+  width: 78px;
+  height: 78px;
+}
+
+@keyframes arc-sweep {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(calc(var(--tilt, 0deg) - 60deg)) scale(0.7); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(calc(var(--tilt, 0deg) + 50deg)) scale(1.12); }
+}
+
+.slash-spark {
+  position: absolute;
+  z-index: 19;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffe4a1;
+  box-shadow: 0 0 6px rgba(244, 187, 85, 0.85);
+  pointer-events: none;
+  animation: spark-fly 0.46s ease-out both;
+}
+
+.slash-spark.enemy {
+  background: #ff9d84;
+  box-shadow: 0 0 6px rgba(226, 100, 80, 0.85);
+}
+
+@keyframes spark-fly {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 10px)), calc(-50% + var(--dy, -8px))) scale(0.3); }
 }
 
 .slash-fx.enemy {

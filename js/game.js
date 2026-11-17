@@ -663,16 +663,29 @@
       return;
     }
 
-    const pad = event.target.closest('[data-pad]');
-    if (pad && view === 'cave') {
-      handlePadTap(Number(pad.dataset.pad));
+    const spotEl = event.target.closest('[data-spot]');
+    if (spotEl && view === 'cave') {
+      handleSpotTap(Number(spotEl.dataset.spot));
       return;
+    }
+
+    // Free placement: tapping the cave floor drops the selected hero there.
+    if (view === 'cave' && cave?.selected) {
+      const zoneEl = event.target.closest('#caveWorld');
+      if (zoneEl && !event.target.closest('.cart-dock') && !event.target.closest('.deploy-pad')) {
+        placeSelectedAt(event.clientX, event.clientY);
+        return;
+      }
     }
 
     const battleHero = event.target.closest('[data-battle-hero]');
     if (battleHero && view === 'battle') {
       castHeroSkill(battleHero.dataset.battleHero);
     }
+  });
+
+  window.addEventListener('resize', () => {
+    if (view === 'cave') layoutFoeGhosts();
   });
 
   soundBtn.addEventListener('click', () => {
@@ -710,8 +723,9 @@
   function enterCave() {
     view = 'cave';
     cave = {
-      pads: Array.from({ length: state.slots }, () => null),
+      spots: [],
       cart: state.cart.filter(id => owned(id)).slice(0, state.slots),
+      foeKeys: waveFoeKeys(state.depth),
       selected: null
     };
     renderCave();
@@ -720,37 +734,38 @@
 
   function caveHintText() {
     if (!cave) return '';
-    const deployed = cave.pads.filter(Boolean).length;
+    const deployed = cave.spots.length;
     if (cave.selected) {
       const hero = HERO_BY_ID[cave.selected];
-      return `Now tap a glowing stone pad to place ${hero.name}.`;
+      return `Tap anywhere on the cave floor to position ${hero.name}.`;
     }
-    if (deployed === 0) return 'Tap a hero in the cart, then tap a stone pad.';
+    if (deployed === 0) return 'Tap a cart hero, then tap the cave floor to position them.';
     if (cave.cart.length > 0) return `${cave.cart.length} hero${cave.cart.length === 1 ? '' : 'es'} still aboard. Place more or fight.`;
-    return 'Everyone is in position. Ready the charge.';
+    return 'Crew in position. Red marks show where foes will emerge.';
   }
 
   function renderCave() {
     if (!cave) return;
     const foes = waveFoeKeys(state.depth);
-    const positions = PAD_POSITIONS[state.slots] || PAD_POSITIONS[1];
-    const deployed = cave.pads.filter(Boolean).length;
+    const deployed = cave.spots.length;
     const selectedHero = cave.selected ? HERO_BY_ID[cave.selected] : null;
     const hasBoss = foes.some(key => ENEMY_TYPES[key].boss);
 
-    const padsHtml = positions.map(([x, y], index) => {
-      const id = cave.pads[index];
-      const targetable = !id && cave.selected;
-      if (!id) {
-        return `<button class="deploy-pad ${targetable ? 'targetable' : ''}" data-pad="${index}" style="--x:${x};--y:${y}" aria-label="Empty deployment pad ${index + 1}">
-          <span class="pad-plus">+</span>
-          <span class="pad-number">Pad ${index + 1}</span>
-        </button>`;
-      }
-      return `<button class="deploy-pad filled" data-pad="${index}" style="--x:${x};--y:${y}" aria-label="Return ${HERO_BY_ID[id].name} to the cart">
-        ${heroPortrait(id, true)}
-        <span class="pad-hero-name">${HERO_BY_ID[id].name}</span>
-      </button>`;
+    /* Heroes go anywhere on the floor; foes are shown where they will spawn
+       so the player can set up an ambush or a defensive line. */
+    const spotsHtml = cave.spots.map((spot, index) => `
+      <button class="deploy-pad filled" data-spot="${index}" style="--x:${spot.x};--y:${spot.y}" aria-label="Return ${HERO_BY_ID[spot.id].name} to the cart">
+        ${heroPortrait(spot.id, true)}
+        <span class="pad-hero-name">${HERO_BY_ID[spot.id].name}</span>
+      </button>`).join('');
+
+    const foeGhosts = foes.map((key, index) => {
+      const type = ENEMY_TYPES[key];
+      return `<span class="foe-ghost ${type.boss ? 'boss' : ''}" data-ghost="${index}">
+        <span class="foe-ghost-ring" aria-hidden="true"></span>
+        <span class="foe-ghost-sprite" aria-hidden="true">${enemySvg(key)}</span>
+        <span class="foe-ghost-tag">${type.name}</span>
+      </span>`;
     }).join('');
 
     const cartTokens = cave.cart.length
@@ -771,8 +786,9 @@
           <div class="cave-threat">${renderThreatDots(state.depth)}<span>${threatLabel(state.depth)}</span></div>
         </div>
 
-        <div class="cave-world">
+        <div class="cave-world" id="caveWorld">
           ${caveArt()}
+          ${foeGhosts}
           <span class="cave-glint" style="left:18%;top:66%"></span>
           <span class="cave-glint g2" style="left:82%;top:48%"></span>
           <span class="cave-glint g3" style="left:61%;top:78%"></span>
@@ -783,7 +799,7 @@
           </div>
 
           <div class="cave-hint">${caveHintText()}</div>
-          ${padsHtml}
+          ${spotsHtml}
         </div>
 
         <div class="cave-bottom">
@@ -799,11 +815,12 @@
           </div>
           <button class="btn primary fight-btn" data-action="fight" ${deployed === 0 ? 'disabled' : ''}>
             <span class="fight-swords" aria-hidden="true">${ICONS.swords}</span>
-            <span class="btn-stack">${deployed === 0 ? 'Deploy a hero' : 'Fight'}<span class="btn-sub">${deployed === 0 ? 'Tap a cart hero, then a pad' : `${deployed} ready · ${foes.length} foe${foes.length === 1 ? '' : 's'}`}</span></span>
+            <span class="btn-stack">${deployed === 0 ? 'Deploy a hero' : 'Fight'}<span class="btn-sub">${deployed === 0 ? 'Tap a cart hero, then the cave floor' : `${deployed} ready · ${foes.length} foe${foes.length === 1 ? '' : 's'}`}</span></span>
           </button>
         </div>
       </section>`);
     updateHeader();
+    layoutFoeGhosts();
   }
 
   function updateCaveSelection() {
@@ -812,10 +829,7 @@
     document.querySelectorAll('.cart-token').forEach(el => {
       el.classList.toggle('selected', el.dataset.cartHero === selected);
     });
-    document.querySelectorAll('.deploy-pad').forEach(el => {
-      const index = Number(el.dataset.pad);
-      el.classList.toggle('targetable', Boolean(selected) && !cave.pads[index]);
-    });
+    $('#caveWorld')?.classList.toggle('placing', Boolean(selected));
     const hint = $('.cave-hint');
     if (hint) hint.textContent = caveHintText();
   }
@@ -827,43 +841,81 @@
     updateCaveSelection();
   }
 
-  function handlePadTap(index) {
-    if (!cave) return;
-    const placed = cave.pads[index];
-    if (cave.selected) {
-      if (placed) {
-        sfx('error');
-        toast('That pad is occupied. Pick an empty pad.', 'warn');
-        return;
-      }
-      deployHero(cave.selected, index);
-      return;
-    }
-    if (placed) {
-      recallHero(index);
-      return;
-    }
-    sfx('select');
-    toast('Pick a hero from the cart first.');
+  function handleSpotTap(index) {
+    const spot = cave?.spots[index];
+    if (spot) recallHero(index);
   }
 
-  function deployHero(id, index) {
-    if (!cave || !cave.cart.includes(id) || cave.pads[index]) return;
+  /* The floor line's on-screen height uses the same maths as the battle
+     arena, so a hero placed "front row" fights on the front row. */
+  function caveFloorTop(zone) {
+    const rect = zone.getBoundingClientRect();
+    const aspect = rect.width / Math.max(1, rect.height);
+    return clamp(0.5 + 0.26 * aspect, 0.52, 0.9);
+  }
+
+  const PLACE_MIN_DIST = 9;
+
+  function placeAt(id, rawX, rawY, zone) {
+    if (!cave || !cave.cart.includes(id)) return false;
+    const world = zone || $('#caveWorld');
+    if (!world) return false;
+    const floorLine = caveFloorTop(world) * 100;
+    if (rawY < floorLine - 1) {
+      sfx('error');
+      toast('Heroes fight on the cave floor — tap below the ledge line.', 'warn');
+      return false;
+    }
+    const x = clamp(rawX, 8, 92);
+    const y = clamp(rawY, floorLine + 1, 93);
+    if (cave.spots.some(spot => Math.hypot(spot.x - x, (spot.y - y) * 0.85) < PLACE_MIN_DIST)) {
+      sfx('error');
+      toast('Too close to another hero — spread out a little.', 'warn');
+      return false;
+    }
     cave.cart = cave.cart.filter(item => item !== id);
-    cave.pads[index] = id;
+    cave.spots.push({ id, x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) });
     cave.selected = null;
     sfx('deploy');
     renderCave();
+    return true;
+  }
+
+  function placeSelectedAt(clientX, clientY) {
+    if (!cave || !cave.selected) return false;
+    const world = $('#caveWorld');
+    if (!world) return false;
+    const rect = world.getBoundingClientRect();
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
+    return placeAt(cave.selected, x, y, world);
   }
 
   function recallHero(index) {
-    const id = cave?.pads[index];
-    if (!id) return;
-    cave.pads[index] = null;
-    cave.cart.push(id);
+    const spot = cave?.spots[index];
+    if (!spot) return;
+    cave.spots.splice(index, 1);
+    cave.cart.push(spot.id);
     cave.selected = null;
     sfx('remove');
     renderCave();
+  }
+
+  /* Foe ghosts mirror the real spawn maths (same floor line and formation
+     table the battle uses), so the preview lines up with the fight. */
+  function layoutFoeGhosts() {
+    if (!cave || view !== 'cave') return;
+    const zone = $('#caveWorld');
+    if (!zone) return;
+    const floorTop = caveFloorTop(zone);
+    zone.style.setProperty('--floor-line', `${(floorTop * 100).toFixed(1)}%`);
+    const positions = ENEMY_FORMATIONS[Math.min(cave.foeKeys.length, 4)] || ENEMY_FORMATIONS[4];
+    zone.querySelectorAll('.foe-ghost').forEach(el => {
+      const pos = positions[Number(el.dataset.ghost)] || [80, 0.5];
+      const y = floorTop * 100 + pos[1] * (97 - floorTop * 100);
+      el.style.setProperty('--x', pos[0].toFixed(1));
+      el.style.setProperty('--y', y.toFixed(1));
+    });
   }
 
   function leaveCave() {
@@ -875,7 +927,7 @@
 
   function tryStartFight() {
     if (!cave) return;
-    const deployed = cave.pads.filter(Boolean);
+    const deployed = cave.spots;
     if (deployed.length === 0) {
       sfx('error');
       toast('Deploy at least one hero before the fight.', 'warn');
@@ -885,7 +937,7 @@
     if (cave.cart.length > 0) {
       toast(`${cave.cart.length} hero${cave.cart.length === 1 ? '' : 'es'} stayed in the cart.`);
     }
-    startBattle(deployed);
+    startBattle(deployed.map(spot => ({ id: spot.id, x: spot.x, y: spot.y })));
   }
 
   /* ---------- Drag & drop deployment ---------- */
@@ -906,7 +958,7 @@
       y: event.clientY,
       moved: false,
       ghost: null,
-      hoverPad: null
+      dropValid: false
     };
     window.addEventListener('pointermove', onDragMove, { passive: false });
     window.addEventListener('pointerup', onDragEnd);
@@ -934,23 +986,29 @@
       drag.ghost.style.left = `${event.clientX}px`;
       drag.ghost.style.top = `${event.clientY}px`;
     }
-    const padEl = document.elementFromPoint(event.clientX, event.clientY)?.closest('.deploy-pad');
-    let hoverPad = null;
-    if (padEl && cave && !cave.pads[Number(padEl.dataset.pad)]) {
-      hoverPad = padEl;
+
+    // The whole cave floor is the drop zone; the ring shows valid drops.
+    let dropValid = false;
+    const world = $('#caveWorld');
+    if (world && cave) {
+      const rect = world.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 100;
+      const y = ((event.clientY - rect.top) / rect.height) * 100;
+      const floorLine = caveFloorTop(world) * 100;
+      const inFloor = x >= 8 && x <= 92 && y >= floorLine - 1 && y <= 93;
+      const cx = clamp(x, 8, 92);
+      const cy = clamp(y, floorLine + 1, 93);
+      const spaced = !cave.spots.some(spot => Math.hypot(spot.x - cx, (spot.y - cy) * 0.85) < PLACE_MIN_DIST);
+      dropValid = inFloor && spaced;
     }
-    document.querySelectorAll('.deploy-pad.hover').forEach(el => {
-      if (el !== hoverPad) el.classList.remove('hover');
-    });
-    if (hoverPad) hoverPad.classList.add('hover');
-    drag.hoverPad = hoverPad ? Number(hoverPad.dataset.pad) : null;
+    drag.dropValid = dropValid;
+    drag.ghost?.classList.toggle('invalid', !dropValid);
   }
 
   function clearDrag(shouldSuppress) {
     if (!drag) return;
     drag.ghost?.remove();
     drag.source?.classList.remove('drag-source');
-    document.querySelectorAll('.deploy-pad.hover').forEach(el => el.classList.remove('hover'));
     window.removeEventListener('pointermove', onDragMove);
     window.removeEventListener('pointerup', onDragEnd);
     window.removeEventListener('pointercancel', onDragCancel);
@@ -960,8 +1018,16 @@
 
   function onDragEnd() {
     if (!drag) return;
-    if (drag.moved && drag.hoverPad !== null) {
-      deployHero(drag.id, drag.hoverPad);
+    if (drag.moved && drag.dropValid) {
+      const world = $('#caveWorld');
+      const rect = world?.getBoundingClientRect();
+      if (rect) {
+        const x = ((drag.x - rect.left) / rect.width) * 100;
+        const y = ((drag.y - rect.top) / rect.height) * 100;
+        placeAt(drag.id, x, y, world);
+      }
+      clearDrag(true);
+      return;
     }
     clearDrag(drag.moved);
   }
@@ -1275,7 +1341,7 @@
           </div>
           <div class="how-step">
             <span class="step-num">2</span>
-            <div><strong>Deploy in the cave</strong><p>Tap a hero in the mine cart, then tap a glowing stone pad to put them down. Drag them down from the cart if you prefer.</p></div>
+            <div><strong>Deploy in the cave</strong><p>Tap a hero in the mine cart, then tap anywhere on the cave floor to position them — or drag them straight down. Red silhouettes show where the foes will emerge, so set up your plan before you fight.</p></div>
           </div>
           <div class="how-step">
             <span class="step-num">3</span>
@@ -1360,11 +1426,11 @@
   function startBattle(deployedIds) {
     const depth = state.depth;
     const foeKeys = waveFoeKeys(depth);
-    const heroes = deployedIds.map((id, index) => {
-      const stats = heroStats(id);
+    const heroes = deployedIds.map((spot, index) => {
+      const stats = heroStats(spot.id);
       return {
-        uid: `h-${index}-${id}`,
-        id,
+        uid: `h-${index}-${spot.id}`,
+        id: spot.id,
         name: stats.name,
         level: stats.level,
         slot: index,
@@ -1383,17 +1449,12 @@
         y: 0,
         hx: 0,
         hy: 0,
+        px: spot.x,
+        py: spot.y,
         el: null,
         hpEl: null,
         ringEl: null
       };
-    });
-
-    const heroPositions = HERO_FORMATIONS[Math.min(heroes.length, 5)] || HERO_FORMATIONS[5];
-    heroes.forEach((hero, index) => {
-      const pos = heroPositions[index] || [50, 0.5];
-      hero.fx = pos[0];
-      hero.fd = pos[1];
     });
 
     const depthHp = Math.pow(1.3, depth - 1);
@@ -1475,12 +1536,13 @@
         <div class="unit-figure"><div class="unit-sprite">${enemySvg(enemy.key)}</div></div>
       </div>`).join('');
 
+    /* --sx staggers plates sideways per slot so neighbours stay readable. */
     const unitLabels = battle.heroes.map(hero => `
-      <span class="unit-label hero" data-label-uid="${hero.uid}" style="--x:${hero.x};--y:${hero.y}">
+      <span class="unit-label hero" data-label-uid="${hero.uid}" style="--x:${hero.x};--y:${hero.y};--sx:${hero.slot}">
         <span class="label-name">${hero.name}</span>
         <span class="unit-health"><i style="width:100%"></i></span>
       </span>`).join('') + battle.enemies.map(enemy => `
-      <span class="unit-label enemy ${enemy.boss ? 'boss' : ''}" data-label-uid="${enemy.uid}" style="--x:${enemy.x};--y:${enemy.y}">
+      <span class="unit-label enemy ${enemy.boss ? 'boss' : ''}" data-label-uid="${enemy.uid}" style="--x:${enemy.x};--y:${enemy.y};--sx:${enemy.slot}">
         <span class="unit-health enemy"><i style="width:100%"></i></span>
       </span>`).join('');
 
@@ -1514,10 +1576,12 @@
   function bindBattleUnits() {
     const arena = $('#battleArena');
     if (!arena) return;
+    battle.arenaW = arena.getBoundingClientRect().width || 350;
     arena.querySelectorAll('[data-uid]').forEach(el => {
       const unit = battle.heroes.find(item => item.uid === el.dataset.uid) || battle.enemies.find(item => item.uid === el.dataset.uid);
       if (!unit) return;
       unit.el = el;
+      unit.spriteW = el.querySelector('.unit-sprite')?.getBoundingClientRect().width || 52;
       unit.labelEl = arena.querySelector(`[data-label-uid="${unit.uid}"]`);
       unit.hpEl = unit.labelEl?.querySelector('.unit-health i') || null;
     });
@@ -1547,6 +1611,7 @@
       }
       const target = acquireTarget(hero);
       if (!target) return;
+      updateFacing(hero, target);
       if (!isRangedUnit(hero) && !approachSpot(hero, target, dt)) return;
       hero.timer -= dt;
       if (hero.timer <= 0) {
@@ -1563,6 +1628,7 @@
       }
       const target = acquireTarget(enemy);
       if (!target) return;
+      updateFacing(enemy, target);
       if (!isRangedUnit(enemy) && !approachSpot(enemy, target, dt)) return;
       enemy.timer -= dt;
       if (enemy.timer <= 0) {
@@ -1618,8 +1684,14 @@
     const floorTop = clamp(0.5 + 0.26 * aspect, 0.52, 0.9);
     const floorBottom = 97;
     const apply = (unit, fx, fd) => {
-      unit.x = unit.hx = clamp(fx, 6, 94);
-      unit.y = unit.hy = floorTop * 100 + fd * (floorBottom - floorTop * 100);
+      if (unit.px != null) {
+        // Placed by the player in the cave: keep their exact spot.
+        unit.x = unit.hx = unit.px;
+        unit.y = unit.hy = unit.py;
+      } else {
+        unit.x = unit.hx = clamp(fx, 6, 94);
+        unit.y = unit.hy = floorTop * 100 + fd * (floorBottom - floorTop * 100);
+      }
       syncUnitPoint(unit);
     };
     battle.heroes.forEach(hero => apply(hero, hero.fx, hero.fd));
@@ -1631,6 +1703,13 @@
 
   function isRangedUnit(unit) {
     return unit.key ? RANGED_ENEMIES.includes(unit.key) : RANGED_HEROES.includes(unit.id);
+  }
+
+  /* Sprites face their opponent, so a hero placed on the right flank still
+     fights toward the left. */
+  function updateFacing(unit, target) {
+    if (!unit.el || !target) return;
+    unit.el.classList.toggle('flip', unit.key ? target.x > unit.x : target.x < unit.x);
   }
 
   function acquireTarget(unit) {
@@ -1646,27 +1725,16 @@
     return target;
   }
 
-  /* The brawl starts already joined: every melee fighter is pre-placed at the
-     exact spot where they trade blows, so nobody charges in from the back line
-     or bounces home after a swing. */
+  /* Duel pairing stays mutual and stable. With free placement, both sides
+     walk in from wherever they stand, then hold their duel spot and keep
+     swinging — no charging home or bouncing back after a swing. */
   function pairFighters() {
     if (!battle) return;
-    const joinUp = (unit, target) => {
-      const spot = engagementPoint(unit, target);
-      unit.spotX = spot.x;
-      unit.spotY = spot.y;
-      unit.spotTarget = target.uid;
-      unit.x = spot.x;
-      unit.y = spot.y;
-      syncUnitPoint(unit);
-    };
     battle.heroes.forEach(hero => {
-      const target = acquireTarget(hero);
-      if (target && !isRangedUnit(hero)) joinUp(hero, target);
+      if (!isRangedUnit(hero)) acquireTarget(hero);
     });
     battle.enemies.forEach(enemy => {
-      const target = acquireTarget(enemy);
-      if (target && !isRangedUnit(enemy)) joinUp(enemy, target);
+      if (!isRangedUnit(enemy)) acquireTarget(enemy);
     });
   }
 
@@ -1689,20 +1757,58 @@
      holds that spot and keeps swinging. Positions never chase each other, so
      the line cannot drift or orbit. */
   function engagementPoint(unit, target) {
-    const direction = unit.key ? 1 : -1;
+    /* Standoff in arena-% so sprites touch without swallowing each other,
+       whatever the screen size or foe size. */
+    const halfA = (unit.spriteW || 52) / 2;
+    const halfB = (target.spriteW || 48) / 2;
+    const arenaW = battle.arenaW || 350;
+    let gap = ((halfA + halfB) / arenaW) * 100 * 0.55;
+    if (target.boss) gap += 2.2;
+    if (isRangedUnit(target)) gap += 3.5;
     const sideCount = unit.key ? battle.enemies.length : battle.heroes.length;
     const spread = (unit.slot - (sideCount - 1) / 2) * 1.4;
-    const gap = (isRangedUnit(target) ? 6.8 : 5.6) + (target.boss ? 2.6 : 0) + Math.abs(spread) * 0.5;
+    const sign = unit.hx < target.hx ? -1 : 1;
+    let x;
     if (isRangedUnit(target)) {
-      return {
-        x: clamp(target.hx + direction * gap, 4, 96),
-        y: clamp(target.hy + spread, 12, 96)
-      };
+      // Hold a shooting lane off the flank of the ranged fighter.
+      x = target.hx + sign * gap;
+    } else if (Math.abs(target.hx - unit.hx) <= gap * 2) {
+      // Already within striking distance (free-placement ambush): fight here.
+      x = unit.hx;
+    } else {
+      // Both duelists converge on the same meeting line between them.
+      x = (unit.hx + target.hx) / 2 + sign * gap;
+    }
+    let spotY = clamp(target.hy + spread, 12, 96);
+
+    // Keep clear of anyone already holding ground nearby, so fighters never
+    // stack into one silhouette.
+    const others = [...battle.heroes, ...battle.enemies]
+      .filter(other => other.alive && other !== unit && other.uid !== target.uid);
+    for (const other of others) {
+      if (Math.hypot(other.x - x, (other.y - spotY) * 0.9) < 6.5) {
+        x = clamp(x + (x < other.x ? -5.5 : 5.5), 4, 96);
+        spotY = clamp(spotY + (spotY < other.y ? -2.5 : 2.5), 12, 96);
+        break;
+      }
     }
     return {
-      x: clamp((unit.hx + target.hx) / 2 + direction * gap, 4, 96),
-      y: clamp((unit.hy + target.hy) / 2 + spread, 12, 96)
+      x: clamp(x, 4, 96),
+      y: spotY
     };
+  }
+
+  /* One-time nudge on arrival so fighters never stack into a silhouette. */
+  function settlePosition(unit) {
+    const others = [...battle.heroes, ...battle.enemies]
+      .filter(other => other.alive && other !== unit && other.uid !== unit.targetUid);
+    for (const other of others) {
+      if (Math.hypot(other.x - unit.x, (other.y - unit.y) * 0.9) < 6.5) {
+        unit.x = clamp(unit.x + (unit.x < other.x ? -5.5 : 5.5), 4, 96);
+        unit.y = clamp(unit.y + (unit.y < other.y ? -2.5 : 2.5), 12, 96);
+        break;
+      }
+    }
   }
 
   function approachSpot(unit, target, dt) {
@@ -1711,6 +1817,7 @@
       unit.spotX = spot.x;
       unit.spotY = spot.y;
       unit.spotTarget = target.uid;
+      unit.settled = false;
     }
     const dx = unit.spotX - unit.x;
     const dy = unit.spotY - unit.y;
@@ -1719,6 +1826,14 @@
     if (dist <= Math.max(step, 0.3)) {
       unit.x = unit.spotX;
       unit.y = unit.spotY;
+      if (!unit.settled) {
+        // Late arrivals nudge once so nobody ends up stacked on a fighter
+        // that was still walking when the spot was picked.
+        settlePosition(unit);
+        unit.spotX = unit.x;
+        unit.spotY = unit.y;
+        unit.settled = true;
+      }
       unit.el?.classList.remove('walking');
       syncUnitPoint(unit);
       return true;
@@ -1759,15 +1874,37 @@
     window.setTimeout(() => node.remove(), 950);
   }
 
-  function addSlash(point, enemy = false) {
+  function addSlash(point, enemy = false, crit = false) {
     const layer = $('#fxLayer');
     if (!layer) return;
-    const node = document.createElement('span');
-    node.className = `slash-fx ${enemy ? 'enemy' : ''}`;
-    node.style.left = `${point.x}px`;
-    node.style.top = `${point.y}px`;
-    layer.appendChild(node);
-    window.setTimeout(() => node.remove(), 430);
+    const ring = document.createElement('span');
+    ring.className = `slash-fx ${enemy ? 'enemy' : ''}${crit ? ' crit' : ''}`;
+    ring.style.left = `${point.x}px`;
+    ring.style.top = `${point.y}px`;
+    layer.appendChild(ring);
+    window.setTimeout(() => ring.remove(), 430);
+
+    const arc = document.createElement('span');
+    arc.className = `slash-arc ${enemy ? 'enemy' : ''}${crit ? ' crit' : ''}`;
+    arc.style.left = `${point.x}px`;
+    arc.style.top = `${point.y}px`;
+    arc.style.setProperty('--tilt', `${rand(-30, 30)}deg`);
+    layer.appendChild(arc);
+    window.setTimeout(() => arc.remove(), 430);
+
+    const sparks = crit ? 6 : 3;
+    for (let i = 0; i < sparks; i++) {
+      const spark = document.createElement('span');
+      spark.className = `slash-spark ${enemy ? 'enemy' : ''}`;
+      spark.style.left = `${point.x}px`;
+      spark.style.top = `${point.y}px`;
+      const angle = rand(0, Math.PI * 2);
+      const reach = rand(13, crit ? 34 : 24);
+      spark.style.setProperty('--dx', `${(Math.cos(angle) * reach).toFixed(1)}px`);
+      spark.style.setProperty('--dy', `${(Math.sin(angle) * reach - 6).toFixed(1)}px`);
+      layer.appendChild(spark);
+      window.setTimeout(() => spark.remove(), 520);
+    }
   }
 
   function addBurst(point) {
@@ -1822,14 +1959,15 @@
     window.setTimeout(() => unit.el?.classList.remove(className), 300);
   }
 
-  function flashHit(unit) {
-    unit.el?.classList.remove('hit');
+  function flashHit(unit, crit = false) {
+    unit.el?.classList.remove('hit', 'crit-shake');
     if (!unit.el) return;
     void unit.el.offsetWidth;
     unit.el.classList.add('hit');
+    if (crit) unit.el.classList.add('crit-shake');
     syncUnitPoint(unit);
     window.setTimeout(() => {
-      unit.el?.classList.remove('hit');
+      unit.el?.classList.remove('hit', 'crit-shake');
       if (unit.alive) syncUnitPoint(unit);
     }, 300);
   }
@@ -1867,7 +2005,7 @@
     playStrike(hero, 'right');
     window.setTimeout(() => {
       if (!battle || battle.over || !target.alive) return;
-      addSlash(unitPoint(target), false);
+      addSlash(unitPoint(target), false, crit);
       damageEnemy(target, damage, crit);
       sfx(crit ? 'crit' : 'hit');
     }, 110);
@@ -1892,7 +2030,7 @@
     playStrike(enemy, 'left');
     window.setTimeout(() => {
       if (!battle || battle.over || !target.alive) return;
-      addSlash(unitPoint(target), true);
+      addSlash(unitPoint(target), true, false);
       damageHero(target, damage);
       sfx(enemy.boss ? 'crit' : 'hurt');
       if (enemy.boss) arenaQuake();
@@ -1905,7 +2043,7 @@
     enemy.hp = Math.max(0, enemy.hp - damage);
     const point = unitPoint(enemy);
     addDamageFloat(`-${damage}`, { x: point.x, y: point.y - 16 }, crit ? 'crit' : 'enemy-hit');
-    flashHit(enemy);
+    flashHit(enemy, crit);
     syncHealth(enemy);
     if (enemy.hp <= 0) killEnemy(enemy, point);
   }
@@ -2147,6 +2285,9 @@
     document.addEventListener('gesturestart', event => event.preventDefault());
     window.addEventListener('beforeunload', save);
   }
+
+  /* QA hook: lets the test driver inspect live battle state. */
+  window.DB_DEBUG = { battle: () => battle, cave: () => cave };
 
   init();
 })();
