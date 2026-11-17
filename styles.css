@@ -268,12 +268,30 @@ svg {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: screen-in 0.42s cubic-bezier(0.22, 0.8, 0.25, 1) both;
+  animation: screen-in 0.36s cubic-bezier(0.22, 0.8, 0.25, 1) both;
 }
 
 @keyframes screen-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.99); }
-  to { opacity: 1; transform: none; }
+  from { transform: translateY(12px) scale(0.988); }
+  to { transform: none; }
+}
+
+.screen.no-enter {
+  animation: none;
+}
+
+.stage-ghost {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  animation: ghost-out 0.34s ease-out both;
+}
+
+@keyframes ghost-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .eyebrow {
@@ -1594,12 +1612,12 @@ svg {
   top: calc(var(--y) * 1%);
   left: calc(var(--x) * 1%);
   display: flex;
-  width: 62px;
+  width: 64px;
   align-items: center;
   flex-direction: column;
-  gap: 3px;
-  transform: translate(-50%, -50%);
-  transition: opacity 0.3s ease, filter 0.2s ease;
+  gap: 2px;
+  transform: translate(-50%, -100%);
+  transition: opacity 0.3s ease, filter 0.2s ease, transform 0.45s ease;
 }
 
 .battle-unit.hero {
@@ -1607,7 +1625,7 @@ svg {
 }
 
 .battle-unit .unit-name {
-  max-width: 72px;
+  max-width: 84px;
   overflow: hidden;
   padding: 0 3px;
   color: #dbcdb9;
@@ -1626,50 +1644,68 @@ svg {
   color: #d7a694;
 }
 
-.unit-portrait {
+.unit-figure {
   position: relative;
-  display: grid;
-  width: clamp(42px, 12vw, 54px);
-  height: clamp(42px, 12vw, 54px);
-  place-items: center;
-  border: 2px solid var(--rarity, #7f8b74);
-  border-radius: 50%;
-  background: #3d3445;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
 }
 
-.unit-portrait .portrait {
+.unit-sprite {
+  position: relative;
+  z-index: 1;
+  width: clamp(46px, 14vw, 62px);
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.45));
+}
+
+.unit-sprite svg {
+  display: block;
   width: 100%;
-  height: 100%;
-  border: 0;
+  height: auto;
 }
 
-.battle-unit.hero.ready .unit-portrait {
-  box-shadow: 0 0 0 2px rgba(244, 187, 85, 0.25), 0 0 20px rgba(244, 187, 85, 0.4);
+.unit-figure::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  bottom: -3px;
+  width: 76%;
+  height: 7px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.52), transparent 68%);
+  transform: translateX(-50%);
 }
 
-.battle-unit.hero .special-ring {
+.skill-aura {
   position: absolute;
   z-index: 2;
-  top: calc(50% - clamp(21px, 6vw, 27px) - 5px);
   left: 50%;
-  width: calc(clamp(42px, 12vw, 54px) + 10px);
-  height: calc(clamp(42px, 12vw, 54px) + 10px);
+  bottom: -6px;
+  width: 96%;
+  height: 14px;
   border-radius: 50%;
-  background: conic-gradient(var(--gold) calc(var(--p, 1) * 1turn), rgba(255, 255, 255, 0.1) 0);
+  background: radial-gradient(ellipse at center, rgba(244, 187, 85, 0.8), rgba(244, 187, 85, 0.24) 55%, transparent 74%);
+  opacity: calc(0.08 + var(--p, 0) * 0.55);
   pointer-events: none;
   transform: translateX(-50%);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
-  opacity: 0.9;
 }
 
-.battle-unit.hero:not(.ready) .special-ring {
-  opacity: 0.58;
+.battle-unit.hero.ready .skill-aura {
+  opacity: 1;
+  animation: aura-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes aura-pulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.2); }
+}
+
+.battle-unit.hero.ready .unit-sprite {
+  filter: drop-shadow(0 0 7px rgba(244, 187, 85, 0.65)) drop-shadow(0 3px 3px rgba(0, 0, 0, 0.45));
 }
 
 .unit-health {
-  width: 48px;
+  width: 52px;
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
@@ -1691,20 +1727,7 @@ svg {
 }
 
 .battle-unit.enemy .unit-sprite {
-  position: relative;
-  display: grid;
-  width: clamp(44px, 13vw, 58px);
-  height: clamp(44px, 13vw, 58px);
-  place-items: center;
-  border: 2px solid rgba(226, 126, 100, 0.28);
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 35%, #4b2b32, #20161c 72%);
-  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.38);
-}
-
-.battle-unit.enemy .unit-sprite svg {
-  width: 86%;
-  height: 86%;
+  width: clamp(42px, 12.5vw, 56px);
 }
 
 .battle-unit.boss {
@@ -1712,14 +1735,12 @@ svg {
 }
 
 .battle-unit.boss .unit-sprite {
-  width: clamp(58px, 16vw, 72px);
-  height: clamp(58px, 16vw, 72px);
-  border-color: rgba(255, 174, 90, 0.55);
-  box-shadow: 0 0 22px rgba(219, 119, 56, 0.28), 0 5px 12px rgba(0, 0, 0, 0.4);
+  width: clamp(64px, 19vw, 88px);
+  filter: drop-shadow(0 0 12px rgba(219, 119, 56, 0.45)) drop-shadow(0 3px 3px rgba(0, 0, 0, 0.5));
 }
 
 .battle-unit.boss .unit-health {
-  width: 60px;
+  width: 66px;
   height: 5px;
 }
 
@@ -1735,7 +1756,8 @@ svg {
 }
 
 .battle-unit.hero.dead {
-  transform: translate(-50%, -50%) rotate(-9deg);
+  transform: translate(-50%, -100%) rotate(-90deg);
+  transform-origin: 50% 100%;
 }
 
 .battle-unit.enemy.dying {
@@ -1743,22 +1765,48 @@ svg {
 }
 
 @keyframes enemy-die {
-  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  30% { opacity: 1; transform: translate(-50%, -53%) scale(1.12) rotate(4deg); }
-  100% { opacity: 0; transform: translate(-50%, -80%) scale(0.48) rotate(28deg); }
+  0% { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+  30% { opacity: 1; transform: translate(-50%, -104%) scale(1.1) rotate(4deg); }
+  100% { opacity: 0; transform: translate(-50%, -132%) scale(0.44) rotate(26deg); }
 }
 
-.battle-unit.lunge-right { animation: lunge-right 0.24s ease-out; }
-.battle-unit.lunge-left { animation: lunge-left 0.24s ease-out; }
+.battle-unit.walking .unit-sprite {
+  animation: walk-bob 0.32s ease-in-out infinite;
+}
+
+.battle-unit.walking .unit-figure::after {
+  animation: walk-shadow 0.32s ease-in-out infinite;
+}
+
+@keyframes walk-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-2.5px) rotate(1.8deg); }
+}
+
+@keyframes walk-shadow {
+  0%, 100% { transform: translateX(-50%) scaleX(1); opacity: 1; }
+  50% { transform: translateX(-50%) scaleX(0.78); opacity: 0.7; }
+}
+
+.battle-unit.walking {
+  z-index: 7;
+}
+
+.battle-unit.hit {
+  z-index: 8;
+}
+
+.battle-unit.lunge-right { animation: lunge-right 0.26s ease-out; }
+.battle-unit.lunge-left { animation: lunge-left 0.26s ease-out; }
 
 @keyframes lunge-right {
-  0%, 100% { transform: translate(-50%, -50%); }
-  42% { transform: translate(calc(-50% + 9px), -50%) scale(1.04); }
+  0%, 100% { transform: translate(-50%, -100%); }
+  45% { transform: translate(calc(-50% + 7px), calc(-100% - 2px)) scale(1.06); }
 }
 
 @keyframes lunge-left {
-  0%, 100% { transform: translate(-50%, -50%); }
-  42% { transform: translate(calc(-50% - 9px), -50%) scale(1.04); }
+  0%, 100% { transform: translate(-50%, -100%); }
+  45% { transform: translate(calc(-50% - 7px), calc(-100% - 2px)) scale(1.06); }
 }
 
 .battle-unit.hit {
@@ -2979,16 +3027,21 @@ svg {
   flex-direction: column;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 24%, rgba(241, 191, 109, 0.18), transparent 22%),
-    #0c1013;
-  animation: veil-in 0.22s ease-out both;
+    radial-gradient(circle at 50% 24%, rgba(241, 191, 109, 0.14), transparent 26%),
+    linear-gradient(180deg, rgba(8, 11, 14, 0.34), rgba(8, 11, 14, 0.58));
+  animation: veil-in 0.18s ease-out both;
   pointer-events: auto;
+}
+
+.descent-veil.lift {
+  opacity: 0;
+  transition: opacity 0.32s ease;
 }
 
 .descent-veil::before {
   position: absolute;
   inset: -50% 0;
-  background: repeating-linear-gradient(90deg, transparent 0 39px, rgba(169, 188, 167, 0.08) 39px 40px);
+  background: repeating-linear-gradient(90deg, transparent 0 39px, rgba(169, 188, 167, 0.09) 39px 40px);
   content: "";
   animation: shaft-rush 0.7s linear infinite;
 }
@@ -3151,8 +3204,9 @@ svg {
   }
 
   .battle-arena {
-    margin-right: 16px;
-    margin-left: 16px;
+    width: min(560px, calc(100% - 32px));
+    margin-right: auto;
+    margin-left: auto;
   }
 
   .cave-head,

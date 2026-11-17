@@ -5,7 +5,7 @@
     SAVE_KEY, MAX_SLOTS, SLOT_COSTS, SKILL_COOLDOWN, HERO_XP_BASE,
     HEROES, HERO_BY_ID, RARITY_LABEL, ENEMY_TYPES, DEPTH_NAMES,
     PAD_POSITIONS, HERO_FORMATIONS, ENEMY_FORMATIONS, ICONS,
-    portraitSvg, enemySvg
+    portraitSvg, enemySvg, heroSpriteSvg
   } = window.DB_DATA;
   const { surfaceArt, caveArt, battleArt, chestSvg, shopChestSvg } = window.DB_ART;
 
@@ -405,6 +405,27 @@
   }
 
   /* =========================================================
+     STAGE SWAPPING — crossfade instead of a black blink
+     ========================================================= */
+
+  function swapStage(html) {
+    const previous = stage.querySelector('.screen');
+    const ghost = previous ? previous.cloneNode(true) : null;
+    stage.innerHTML = html;
+    if (!ghost) return;
+    ghost.classList.add('no-enter');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.querySelectorAll('button, a, input, select, textarea').forEach(node => {
+      node.setAttribute('tabindex', '-1');
+    });
+    const wrap = document.createElement('div');
+    wrap.className = 'stage-ghost';
+    wrap.appendChild(ghost);
+    stage.appendChild(wrap);
+    window.setTimeout(() => wrap.remove(), 400);
+  }
+
+  /* =========================================================
      SURFACE
      ========================================================= */
 
@@ -456,7 +477,7 @@
 
     const miniFoes = miniEnemyStack(foes);
 
-    stage.innerHTML = `
+    swapStage(`
       <section class="screen surface" aria-label="Surface camp">
         <div class="surface-scene">
           ${surfaceArt()}
@@ -525,7 +546,7 @@
             <span class="btn-stack">Descend<span class="btn-sub">${cart.length ? `Depth ${state.depth} · ${foes.length} foe${foes.length === 1 ? '' : 's'}` : 'Load a hero first'}</span></span>
           </button>
         </div>
-      </section>`;
+      </section>`);
     updateHeader();
   }
 
@@ -588,12 +609,11 @@
     app.appendChild(veil);
     window.setTimeout(() => {
       enterCave();
-    }, 560);
+    }, 240);
     window.setTimeout(() => {
-      veil.style.transition = 'opacity .28s ease';
-      veil.style.opacity = '0';
-      window.setTimeout(() => veil.remove(), 300);
-    }, 820);
+      veil.classList.add('lift');
+      window.setTimeout(() => veil.remove(), 340);
+    }, 620);
   }
 
   /* =========================================================
@@ -743,7 +763,7 @@
       ? ENEMY_TYPES[foes[0]].name
       : `${foes.length} hostiles${hasBoss ? ' · boss' : ''}`;
 
-    stage.innerHTML = `
+    swapStage(`
       <section class="screen cave" aria-label="Cave deployment">
         <div class="cave-head">
           <button class="cave-back" data-action="cave-back" aria-label="Return to surface">${ICONS.back}<span>Surface</span></button>
@@ -782,7 +802,7 @@
             <span class="btn-stack">${deployed === 0 ? 'Deploy a hero' : 'Fight'}<span class="btn-sub">${deployed === 0 ? 'Tap a cart hero, then a pad' : `${deployed} ready · ${foes.length} foe${foes.length === 1 ? '' : 's'}`}</span></span>
           </button>
         </div>
-      </section>`;
+      </section>`);
     updateHeader();
   }
 
@@ -1347,6 +1367,7 @@
         id,
         name: stats.name,
         level: stats.level,
+        slot: index,
         maxHp: stats.maxHp,
         hp: stats.maxHp,
         atk: stats.power,
@@ -1356,6 +1377,9 @@
         alive: true,
         x: 0,
         y: 0,
+        hx: 0,
+        hy: 0,
+        wt: null,
         el: null,
         hpEl: null,
         ringEl: null
@@ -1364,9 +1388,9 @@
 
     const heroPositions = HERO_FORMATIONS[Math.min(heroes.length, 5)] || HERO_FORMATIONS[5];
     heroes.forEach((hero, index) => {
-      const pos = heroPositions[index] || [50, 50];
-      hero.x = pos[0];
-      hero.y = pos[1];
+      const pos = heroPositions[index] || [50, 0.5];
+      hero.fx = pos[0];
+      hero.fd = pos[1];
     });
 
     const depthHp = Math.pow(1.3, depth - 1);
@@ -1379,6 +1403,7 @@
         uid: `e-${index}-${key}`,
         key,
         name: type.name,
+        slot: index,
         maxHp,
         hp: maxHp,
         atk: Math.max(2, Math.round(4.8 * depthAtk * type.atk)),
@@ -1389,6 +1414,9 @@
         boss: Boolean(type.boss),
         x: 0,
         y: 0,
+        hx: 0,
+        hy: 0,
+        wt: null,
         el: null,
         hpEl: null
       };
@@ -1396,9 +1424,9 @@
 
     const enemyPositions = ENEMY_FORMATIONS[Math.min(enemies.length, 4)] || ENEMY_FORMATIONS[4];
     enemies.forEach((enemy, index) => {
-      const pos = enemyPositions[index] || [80, 50];
-      enemy.x = pos[0];
-      enemy.y = pos[1];
+      const pos = enemyPositions[index] || [80, 0.5];
+      enemy.fx = pos[0];
+      enemy.fd = pos[1];
     });
 
     battle = {
@@ -1416,6 +1444,7 @@
     view = 'battle';
     renderBattleShell();
     bindBattleUnits();
+    placeFormations();
     sfx('fight');
     cancelAnimationFrame(battleRaf);
     lastFrame = performance.now();
@@ -1426,26 +1455,28 @@
     const depth = battle.depth;
     const heroUnits = battle.heroes.map(hero => {
       const heroData = HERO_BY_ID[hero.id];
-      return `<div class="battle-unit hero rarity-${heroData.rarity}" data-battle-hero="${hero.uid}" data-uid="${hero.uid}" style="--x:${hero.x};--y:${hero.y};--rarity:${heroData.rarity === 'epic' ? '#c084d7' : heroData.rarity === 'rare' ? '#67b6d5' : '#86a98d'}">
-        <span class="special-ring" style="--p:0"></span>
-        <div class="unit-portrait">${heroPortrait(hero.id, true)}</div>
+      return `<div class="battle-unit hero rarity-${heroData.rarity}" data-battle-hero="${hero.uid}" data-uid="${hero.uid}" style="--x:${hero.x};--y:${hero.y}">
         <span class="unit-name">${hero.name}</span>
         <span class="unit-health"><i style="width:100%"></i></span>
+        <div class="unit-figure">
+          <span class="skill-aura" style="--p:0"></span>
+          <div class="unit-sprite">${heroSpriteSvg(heroData)}</div>
+        </div>
       </div>`;
     }).join('');
 
     const enemyUnits = battle.enemies.map(enemy => `
       <div class="battle-unit enemy ${enemy.boss ? 'boss' : ''}" data-uid="${enemy.uid}" style="--x:${enemy.x};--y:${enemy.y}">
-        <div class="unit-sprite">${enemySvg(enemy.key)}</div>
         <span class="unit-name">${enemy.name}</span>
         <span class="unit-health enemy"><i style="width:100%"></i></span>
+        <div class="unit-figure"><div class="unit-sprite">${enemySvg(enemy.key)}</div></div>
       </div>`).join('');
 
-    stage.innerHTML = `
+    swapStage(`
       <section class="screen battle" aria-label="Cave battle">
         <div class="battle-head">
           <div class="battle-chip depth"><span>Depth</span><strong>${depth}</strong></div>
-          <div class="battle-chip"><span id="foeCount">${battle.enemies.length} foes</span></div>
+          <div class="battle-chip"><span id="foeCount">${battle.enemies.length} foe${battle.enemies.length === 1 ? '' : 's'}</span></div>
           <div class="battle-chip"><span class="coin-icon" aria-hidden="true"></span><strong id="battleCoins">+0</strong></div>
         </div>
 
@@ -1464,7 +1495,7 @@
             <span class="status-right">Auto-attack on</span>
           </div>
         </div>
-      </section>`;
+      </section>`);
   }
 
   function bindBattleUnits() {
@@ -1477,7 +1508,7 @@
       unit.hpEl = el.querySelector('.unit-health i');
     });
     battle.heroes.forEach(hero => {
-      hero.ringEl = hero.el?.querySelector('.special-ring');
+      hero.ringEl = hero.el?.querySelector('.skill-aura');
     });
   }
 
@@ -1493,6 +1524,7 @@
     }
 
     battle.elapsed += dt;
+    updateWalks(dt);
 
     battle.heroes.forEach(hero => {
       if (!hero.alive) return;
@@ -1500,6 +1532,7 @@
       if (hero.cooldown <= 0 && hero.ringEl) {
         hero.el?.classList.add('ready');
       }
+      if (hero.wt) return;
       hero.timer -= dt;
       if (hero.timer <= 0) {
         const targets = livingEnemies();
@@ -1516,6 +1549,7 @@
         enemy.stun = Math.max(0, enemy.stun - dt);
         return;
       }
+      if (enemy.wt) return;
       enemy.timer -= dt;
       if (enemy.timer <= 0) {
         const targets = livingHeroes();
@@ -1556,6 +1590,97 @@
       hero.ringEl.style.setProperty('--p', String(clamp(progress, 0, 1)));
       if (hero.alive) hero.el?.classList.toggle('ready', hero.cooldown <= 0);
     });
+  }
+
+  /* =========================================================
+     UNIT MOVEMENT — characters close in and strike
+     ========================================================= */
+
+  /* The floor line's on-screen height depends on the arena's aspect ratio
+     (the background art uses "slice" fitting), so place feet on the real floor. */
+  function placeFormations() {
+    if (!battle) return;
+    const arena = $('#battleArena');
+    if (!arena) return;
+    const rect = arena.getBoundingClientRect();
+    const aspect = rect.width / Math.max(1, rect.height);
+    const floorTop = clamp(0.5 + 0.26 * aspect, 0.52, 0.9);
+    const floorBottom = 97;
+    const apply = (unit, fx, fd) => {
+      unit.x = unit.hx = clamp(fx, 6, 94);
+      unit.y = unit.hy = floorTop * 100 + fd * (floorBottom - floorTop * 100);
+      if (unit.el) {
+        unit.el.style.setProperty('--x', unit.x.toFixed(2));
+        unit.el.style.setProperty('--y', unit.y.toFixed(2));
+      }
+    };
+    battle.heroes.forEach(hero => apply(hero, hero.fx, hero.fd));
+    battle.enemies.forEach(enemy => apply(enemy, enemy.fx, enemy.fd));
+  }
+
+  function walkUnit(unit, tx, ty, cb, track, off) {
+    unit.wt = {
+      x: tx,
+      y: ty,
+      cb,
+      speed: unit.boss ? 44 : 80,
+      track: track || null,
+      off: off || 0
+    };
+    unit.el?.classList.add('walking');
+  }
+
+  function walkHome(unit) {
+    if (!unit.alive || unit.wt || !battle || battle.over) return;
+    walkUnit(unit, unit.hx, unit.hy, null);
+  }
+
+  function cancelWalk(unit) {
+    unit.wt = null;
+    unit.el?.classList.remove('walking');
+  }
+
+  function updateWalks(dt) {
+    if (!battle) return;
+    battle.heroes.forEach(hero => stepWalk(hero, dt));
+    battle.enemies.forEach(enemy => stepWalk(enemy, dt));
+  }
+
+  function stepWalk(unit, dt) {
+    const walk = unit.wt;
+    if (!walk) return;
+    if (!unit.alive) {
+      cancelWalk(unit);
+      return;
+    }
+    const dx = walk.x - unit.x;
+    const dy = walk.y - unit.y;
+    const dist = Math.hypot(dx, dy);
+    const step = walk.speed * dt;
+    if (walk.track && walk.track.alive) {
+      walk.x = clamp(walk.track.x + walk.off, 4, 96);
+      walk.y = walk.track.y;
+    }
+    if (dist <= step || dist < 0.8) {
+      unit.x = walk.x;
+      unit.y = walk.y;
+      unit.wt = null;
+      unit.el?.classList.remove('walking');
+      if (walk.cb) walk.cb();
+      return;
+    }
+    unit.x += dx / dist * step;
+    unit.y += dy / dist * step;
+    if (unit.el) {
+      unit.el.style.setProperty('--x', unit.x.toFixed(2));
+      unit.el.style.setProperty('--y', unit.y.toFixed(2));
+    }
+  }
+
+  function arenaQuake() {
+    const arena = $('#battleArena');
+    arena?.classList.add('quake');
+    window.setTimeout(() => arena?.classList.remove('quake'), 240);
   }
 
   function unitPoint(unit) {
@@ -1671,37 +1796,77 @@
     const crit = Math.random() < 0.12;
     const base = hero.atk * rand(0.9, 1.1) * (crit ? 1.68 : 1);
     const ranged = ['mica', 'sable', 'orin'].includes(hero.id);
-    playLunge(hero, 'right');
+
     if (ranged) {
+      playLunge(hero, 'right');
       addProjectile(unitPoint(hero), unitPoint(target), false);
-    } else {
+      window.setTimeout(() => {
+        if (!battle || battle.over || !target.alive) return;
+        addSlash(unitPoint(target), false);
+        damageEnemy(target, base, crit);
+        sfx(crit ? 'crit' : 'hit');
+      }, 230);
+      return;
+    }
+
+    const off = -7 - (hero.slot % 2 ? 3.5 : 0);
+    walkUnit(hero, clamp(target.x + off, 5, 95), target.y, () => {
+      if (!battle || battle.over || !target.alive || !hero.alive) {
+        walkHome(hero);
+        return;
+      }
+      playLunge(hero, 'right');
       window.setTimeout(() => {
         if (target.alive) addSlash(unitPoint(target), false);
-      }, 90);
-    }
-    damageEnemy(target, base, crit);
-    sfx(crit ? 'crit' : 'hit');
+      }, 70);
+      window.setTimeout(() => {
+        if (!battle || battle.over || !target.alive) return;
+        damageEnemy(target, base, crit);
+        sfx(crit ? 'crit' : 'hit');
+      }, 100);
+      window.setTimeout(() => {
+        if (hero.alive && !hero.wt) walkHome(hero);
+      }, 170);
+    }, target, off);
   }
 
   function enemyAttack(enemy, targets) {
     const target = pick(targets);
     if (!target) return;
-    playLunge(enemy, 'left');
     const ranged = ['spider', 'wraith'].includes(enemy.key);
-    if (ranged) addProjectile(unitPoint(enemy), unitPoint(target), true);
-    else {
+
+    if (ranged) {
+      playLunge(enemy, 'left');
+      addProjectile(unitPoint(enemy), unitPoint(target), true);
+      window.setTimeout(() => {
+        if (!battle || battle.over || !target.alive) return;
+        damageHero(target, enemy.atk * rand(0.9, 1.14));
+        sfx(enemy.boss ? 'crit' : 'hurt');
+      }, 230);
+      if (enemy.boss) arenaQuake();
+      return;
+    }
+
+    const off = 7 + (enemy.slot % 2 ? 3.5 : 0);
+    walkUnit(enemy, clamp(target.x + off, 5, 95), target.y, () => {
+      if (!battle || battle.over || !target.alive || !enemy.alive) {
+        walkHome(enemy);
+        return;
+      }
+      playLunge(enemy, 'left');
       window.setTimeout(() => {
         if (target.alive) addSlash(unitPoint(target), true);
-      }, 80);
-    }
-    const damage = enemy.atk * rand(0.9, 1.14);
-    damageHero(target, damage);
-    sfx(enemy.boss ? 'crit' : 'hurt');
-    if (enemy.boss) {
-      const arena = $('#battleArena');
-      arena?.classList.add('quake');
-      window.setTimeout(() => arena?.classList.remove('quake'), 240);
-    }
+      }, 70);
+      window.setTimeout(() => {
+        if (!battle || battle.over || !target.alive) return;
+        damageHero(target, enemy.atk * rand(0.9, 1.14));
+        sfx(enemy.boss ? 'crit' : 'hurt');
+        if (enemy.boss) arenaQuake();
+      }, 100);
+      window.setTimeout(() => {
+        if (enemy.alive && !enemy.wt) walkHome(enemy);
+      }, 170);
+    }, target, off);
   }
 
   function damageEnemy(enemy, amount, crit = false) {
@@ -1725,6 +1890,7 @@
     syncHealth(hero);
     if (hero.hp <= 0) {
       hero.alive = false;
+      cancelWalk(hero);
       hero.el?.classList.add('dead');
       hero.el?.classList.remove('ready');
       sfx('lose');
@@ -1734,6 +1900,7 @@
   function killEnemy(enemy, point) {
     if (!enemy.alive || !battle) return;
     enemy.alive = false;
+    cancelWalk(enemy);
     enemy.el?.classList.add('dying');
     enemy.el?.classList.remove('ready');
     const type = ENEMY_TYPES[enemy.key];
@@ -1824,9 +1991,7 @@
         });
       }
       sfx('special');
-      const arena = $('#battleArena');
-      arena?.classList.add('quake');
-      window.setTimeout(() => arena?.classList.remove('quake'), 230);
+      arenaQuake();
     }
     updateSkillRings();
   }
@@ -1849,6 +2014,8 @@
     battle.over = true;
     battle.ending = true;
     cancelAnimationFrame(battleRaf);
+    battle.heroes.forEach(cancelWalk);
+    battle.enemies.forEach(cancelWalk);
 
     const depth = battle.depth;
     let totalCoins = battle.coinsEarned;
