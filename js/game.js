@@ -1372,7 +1372,7 @@
         hp: stats.maxHp,
         atk: stats.power,
         interval: stats.interval * rand(0.95, 1.05),
-        timer: rand(0.4, 1.0) + 0.35,
+        timer: rand(0.25, 0.7) + 0.25,
         cooldown: 1.2,
         targetUid: null,
         spotX: null,
@@ -1411,7 +1411,7 @@
         hp: maxHp,
         atk: Math.max(2, Math.round(4.8 * depthAtk * type.atk)),
         interval: type.interval * rand(0.92, 1.08),
-        timer: rand(0.7, 1.6) + 0.35,
+        timer: rand(0.55, 1.25) + 0.25,
         stun: 0,
         targetUid: null,
         spotX: null,
@@ -1441,7 +1441,7 @@
       enemies,
       coinsEarned: 0,
       elapsed: 0,
-      delay: 0.7,
+      delay: 0.5,
       over: false,
       ending: false,
       lastDenied: 0,
@@ -1451,6 +1451,7 @@
     renderBattleShell();
     bindBattleUnits();
     placeFormations();
+    pairFighters();
     sfx('fight');
     cancelAnimationFrame(battleRaf);
     lastFrame = performance.now();
@@ -1645,12 +1646,41 @@
     return target;
   }
 
+  /* The brawl starts already joined: every melee fighter is pre-placed at the
+     exact spot where they trade blows, so nobody charges in from the back line
+     or bounces home after a swing. */
+  function pairFighters() {
+    if (!battle) return;
+    const joinUp = (unit, target) => {
+      const spot = engagementPoint(unit, target);
+      unit.spotX = spot.x;
+      unit.spotY = spot.y;
+      unit.spotTarget = target.uid;
+      unit.x = spot.x;
+      unit.y = spot.y;
+      syncUnitPoint(unit);
+    };
+    battle.heroes.forEach(hero => {
+      const target = acquireTarget(hero);
+      if (target && !isRangedUnit(hero)) joinUp(hero, target);
+    });
+    battle.enemies.forEach(enemy => {
+      const target = acquireTarget(enemy);
+      if (target && !isRangedUnit(enemy)) joinUp(enemy, target);
+    });
+  }
+
   function syncUnitPoint(unit) {
     if (!unit.el) return;
     const x = unit.x.toFixed(2);
     const y = unit.y.toFixed(2);
     unit.el.style.setProperty('--x', x);
     unit.el.style.setProperty('--y', y);
+    // Front-row fighters paint above back-row ones, but stay inside the unit
+    // band (below the label layer at z-index 12) so plates stay readable.
+    const boost = (unit.el.classList.contains('hit') ? 3 : 0) +
+      (unit.el.classList.contains('walking') ? 2 : 0);
+    unit.el.style.zIndex = String(Math.min(11, Math.round(unit.y / 12) + boost));
     unit.labelEl?.style.setProperty('--x', x);
     unit.labelEl?.style.setProperty('--y', y);
   }
@@ -1662,14 +1692,15 @@
     const direction = unit.key ? 1 : -1;
     const sideCount = unit.key ? battle.enemies.length : battle.heroes.length;
     const spread = (unit.slot - (sideCount - 1) / 2) * 1.4;
+    const gap = (isRangedUnit(target) ? 6.8 : 5.6) + (target.boss ? 2.6 : 0) + Math.abs(spread) * 0.5;
     if (isRangedUnit(target)) {
       return {
-        x: clamp(target.hx + direction * 6.8, 4, 96),
+        x: clamp(target.hx + direction * gap, 4, 96),
         y: clamp(target.hy + spread, 12, 96)
       };
     }
     return {
-      x: clamp((unit.hx + target.hx) / 2 + direction * 4.8, 4, 96),
+      x: clamp((unit.hx + target.hx) / 2 + direction * gap, 4, 96),
       y: clamp((unit.hy + target.hy) / 2 + spread, 12, 96)
     };
   }
@@ -1796,7 +1827,11 @@
     if (!unit.el) return;
     void unit.el.offsetWidth;
     unit.el.classList.add('hit');
-    window.setTimeout(() => unit.el?.classList.remove('hit'), 300);
+    syncUnitPoint(unit);
+    window.setTimeout(() => {
+      unit.el?.classList.remove('hit');
+      if (unit.alive) syncUnitPoint(unit);
+    }, 300);
   }
 
   function syncHealth(unit) {
