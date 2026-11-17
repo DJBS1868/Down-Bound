@@ -1372,14 +1372,17 @@
         hp: stats.maxHp,
         atk: stats.power,
         interval: stats.interval * rand(0.95, 1.05),
-        timer: rand(0.5, 1.2) + 0.55,
+        timer: rand(0.4, 1.0) + 0.35,
         cooldown: 1.2,
+        targetUid: null,
+        spotX: null,
+        spotY: 0,
+        spotTarget: null,
         alive: true,
         x: 0,
         y: 0,
         hx: 0,
         hy: 0,
-        wt: null,
         el: null,
         hpEl: null,
         ringEl: null
@@ -1408,15 +1411,18 @@
         hp: maxHp,
         atk: Math.max(2, Math.round(4.8 * depthAtk * type.atk)),
         interval: type.interval * rand(0.92, 1.08),
-        timer: rand(0.9, 1.9) + 0.55,
+        timer: rand(0.7, 1.6) + 0.35,
         stun: 0,
+        targetUid: null,
+        spotX: null,
+        spotY: 0,
+        spotTarget: null,
         alive: true,
         boss: Boolean(type.boss),
         x: 0,
         y: 0,
         hx: 0,
         hy: 0,
-        wt: null,
         el: null,
         hpEl: null
       };
@@ -1455,9 +1461,7 @@
     const depth = battle.depth;
     const heroUnits = battle.heroes.map(hero => {
       const heroData = HERO_BY_ID[hero.id];
-      return `<div class="battle-unit hero rarity-${heroData.rarity}" data-battle-hero="${hero.uid}" data-uid="${hero.uid}" style="--x:${hero.x};--y:${hero.y}">
-        <span class="unit-name">${hero.name}</span>
-        <span class="unit-health"><i style="width:100%"></i></span>
+      return `<div class="battle-unit hero rarity-${heroData.rarity}" data-battle-hero="${hero.uid}" data-uid="${hero.uid}" role="img" aria-label="${hero.name}" style="--x:${hero.x};--y:${hero.y}">
         <div class="unit-figure">
           <span class="skill-aura" style="--p:0"></span>
           <div class="unit-sprite">${heroSpriteSvg(heroData)}</div>
@@ -1466,11 +1470,18 @@
     }).join('');
 
     const enemyUnits = battle.enemies.map(enemy => `
-      <div class="battle-unit enemy ${enemy.boss ? 'boss' : ''}" data-uid="${enemy.uid}" style="--x:${enemy.x};--y:${enemy.y}">
-        <span class="unit-name">${enemy.name}</span>
-        <span class="unit-health enemy"><i style="width:100%"></i></span>
+      <div class="battle-unit enemy ${enemy.boss ? 'boss' : ''}" data-uid="${enemy.uid}" role="img" aria-label="${enemy.name}" style="--x:${enemy.x};--y:${enemy.y}">
         <div class="unit-figure"><div class="unit-sprite">${enemySvg(enemy.key)}</div></div>
       </div>`).join('');
+
+    const unitLabels = battle.heroes.map(hero => `
+      <span class="unit-label hero" data-label-uid="${hero.uid}" style="--x:${hero.x};--y:${hero.y}">
+        <span class="label-name">${hero.name}</span>
+        <span class="unit-health"><i style="width:100%"></i></span>
+      </span>`).join('') + battle.enemies.map(enemy => `
+      <span class="unit-label enemy ${enemy.boss ? 'boss' : ''}" data-label-uid="${enemy.uid}" style="--x:${enemy.x};--y:${enemy.y}">
+        <span class="unit-health enemy"><i style="width:100%"></i></span>
+      </span>`).join('');
 
     swapStage(`
       <section class="screen battle" aria-label="Cave battle">
@@ -1484,6 +1495,7 @@
           ${battleArt()}
           ${heroUnits}
           ${enemyUnits}
+          <div class="unit-labels" id="unitLabels">${unitLabels}</div>
           <div class="fx-layer" id="fxLayer"></div>
           <div class="battle-start-banner" aria-hidden="true">Fight!</div>
         </div>
@@ -1505,7 +1517,8 @@
       const unit = battle.heroes.find(item => item.uid === el.dataset.uid) || battle.enemies.find(item => item.uid === el.dataset.uid);
       if (!unit) return;
       unit.el = el;
-      unit.hpEl = el.querySelector('.unit-health i');
+      unit.labelEl = arena.querySelector(`[data-label-uid="${unit.uid}"]`);
+      unit.hpEl = unit.labelEl?.querySelector('.unit-health i') || null;
     });
     battle.heroes.forEach(hero => {
       hero.ringEl = hero.el?.querySelector('.skill-aura');
@@ -1524,7 +1537,6 @@
     }
 
     battle.elapsed += dt;
-    updateWalks(dt);
 
     battle.heroes.forEach(hero => {
       if (!hero.alive) return;
@@ -1532,14 +1544,13 @@
       if (hero.cooldown <= 0 && hero.ringEl) {
         hero.el?.classList.add('ready');
       }
-      if (hero.wt) return;
+      const target = acquireTarget(hero);
+      if (!target) return;
+      if (!isRangedUnit(hero) && !approachSpot(hero, target, dt)) return;
       hero.timer -= dt;
       if (hero.timer <= 0) {
-        const targets = livingEnemies();
-        if (targets.length) {
-          heroAttack(hero, targets);
-          hero.timer = hero.interval * rand(0.95, 1.05);
-        }
+        heroAttack(hero, target);
+        hero.timer = hero.interval * rand(0.94, 1.06);
       }
     });
 
@@ -1549,14 +1560,13 @@
         enemy.stun = Math.max(0, enemy.stun - dt);
         return;
       }
-      if (enemy.wt) return;
+      const target = acquireTarget(enemy);
+      if (!target) return;
+      if (!isRangedUnit(enemy) && !approachSpot(enemy, target, dt)) return;
       enemy.timer -= dt;
       if (enemy.timer <= 0) {
-        const targets = livingHeroes();
-        if (targets.length) {
-          enemyAttack(enemy, targets);
-          enemy.timer = enemy.interval * rand(0.94, 1.08);
-        }
+        enemyAttack(enemy, target);
+        enemy.timer = enemy.interval * rand(0.9, 1.1);
       }
     });
 
@@ -1609,72 +1619,84 @@
     const apply = (unit, fx, fd) => {
       unit.x = unit.hx = clamp(fx, 6, 94);
       unit.y = unit.hy = floorTop * 100 + fd * (floorBottom - floorTop * 100);
-      if (unit.el) {
-        unit.el.style.setProperty('--x', unit.x.toFixed(2));
-        unit.el.style.setProperty('--y', unit.y.toFixed(2));
-      }
+      syncUnitPoint(unit);
     };
     battle.heroes.forEach(hero => apply(hero, hero.fx, hero.fd));
     battle.enemies.forEach(enemy => apply(enemy, enemy.fx, enemy.fd));
   }
 
-  function walkUnit(unit, tx, ty, cb, track, off) {
-    unit.wt = {
-      x: tx,
-      y: ty,
-      cb,
-      speed: unit.boss ? 44 : 80,
-      track: track || null,
-      off: off || 0
+  const RANGED_HEROES = ['mica', 'sable', 'orin'];
+  const RANGED_ENEMIES = ['spider', 'wraith'];
+
+  function isRangedUnit(unit) {
+    return unit.key ? RANGED_ENEMIES.includes(unit.key) : RANGED_HEROES.includes(unit.id);
+  }
+
+  function acquireTarget(unit) {
+    if (!battle) return null;
+    const pool = (unit.key ? battle.heroes : battle.enemies).filter(other => other.alive);
+    if (!pool.length) return null;
+    const current = pool.find(other => other.uid === unit.targetUid);
+    if (current) return current;
+    // Slot pairing gives both sides matching opponents, so duels stay mutual.
+    const sorted = [...pool].sort((a, b) => a.slot - b.slot);
+    const target = sorted[unit.slot % sorted.length];
+    unit.targetUid = target.uid;
+    return target;
+  }
+
+  function syncUnitPoint(unit) {
+    if (!unit.el) return;
+    const x = unit.x.toFixed(2);
+    const y = unit.y.toFixed(2);
+    unit.el.style.setProperty('--x', x);
+    unit.el.style.setProperty('--y', y);
+    unit.labelEl?.style.setProperty('--x', x);
+    unit.labelEl?.style.setProperty('--y', y);
+  }
+
+  /* Each fighter walks once to a spot tied to its opponent's home ground, then
+     holds that spot and keeps swinging. Positions never chase each other, so
+     the line cannot drift or orbit. */
+  function engagementPoint(unit, target) {
+    const direction = unit.key ? 1 : -1;
+    const sideCount = unit.key ? battle.enemies.length : battle.heroes.length;
+    const spread = (unit.slot - (sideCount - 1) / 2) * 1.4;
+    if (isRangedUnit(target)) {
+      return {
+        x: clamp(target.hx + direction * 6.8, 4, 96),
+        y: clamp(target.hy + spread, 12, 96)
+      };
+    }
+    return {
+      x: clamp((unit.hx + target.hx) / 2 + direction * 4.8, 4, 96),
+      y: clamp((unit.hy + target.hy) / 2 + spread, 12, 96)
     };
-    unit.el?.classList.add('walking');
   }
 
-  function walkHome(unit) {
-    if (!unit.alive || unit.wt || !battle || battle.over) return;
-    walkUnit(unit, unit.hx, unit.hy, null);
-  }
-
-  function cancelWalk(unit) {
-    unit.wt = null;
-    unit.el?.classList.remove('walking');
-  }
-
-  function updateWalks(dt) {
-    if (!battle) return;
-    battle.heroes.forEach(hero => stepWalk(hero, dt));
-    battle.enemies.forEach(enemy => stepWalk(enemy, dt));
-  }
-
-  function stepWalk(unit, dt) {
-    const walk = unit.wt;
-    if (!walk) return;
-    if (!unit.alive) {
-      cancelWalk(unit);
-      return;
+  function approachSpot(unit, target, dt) {
+    if (unit.spotX == null || unit.spotTarget !== target.uid) {
+      const spot = engagementPoint(unit, target);
+      unit.spotX = spot.x;
+      unit.spotY = spot.y;
+      unit.spotTarget = target.uid;
     }
-    const dx = walk.x - unit.x;
-    const dy = walk.y - unit.y;
+    const dx = unit.spotX - unit.x;
+    const dy = unit.spotY - unit.y;
     const dist = Math.hypot(dx, dy);
-    const step = walk.speed * dt;
-    if (walk.track && walk.track.alive) {
-      walk.x = clamp(walk.track.x + walk.off, 4, 96);
-      walk.y = walk.track.y;
-    }
-    if (dist <= step || dist < 0.8) {
-      unit.x = walk.x;
-      unit.y = walk.y;
-      unit.wt = null;
+    const step = (unit.boss ? 46 : 78) * dt;
+    if (dist <= Math.max(step, 0.3)) {
+      unit.x = unit.spotX;
+      unit.y = unit.spotY;
       unit.el?.classList.remove('walking');
-      if (walk.cb) walk.cb();
-      return;
+      syncUnitPoint(unit);
+      return true;
     }
-    unit.x += dx / dist * step;
-    unit.y += dy / dist * step;
-    if (unit.el) {
-      unit.el.style.setProperty('--x', unit.x.toFixed(2));
-      unit.el.style.setProperty('--y', unit.y.toFixed(2));
-    }
+    unit.el?.classList.add('walking');
+    unit.x += (dx / dist) * step;
+    unit.y += (dy / dist) * step;
+    syncUnitPoint(unit);
+    return false;
   }
 
   function arenaQuake() {
@@ -1760,13 +1782,13 @@
     anim.onfinish = () => node.remove();
   }
 
-  function playLunge(unit, direction) {
-    const className = direction === 'right' ? 'lunge-right' : 'lunge-left';
-    unit.el?.classList.remove(className);
+  function playStrike(unit, direction) {
+    const className = direction === 'right' ? 'strike-right' : 'strike-left';
     if (!unit.el) return;
+    unit.el.classList.remove('strike-right', 'strike-left');
     void unit.el.offsetWidth;
     unit.el.classList.add(className);
-    window.setTimeout(() => unit.el?.classList.remove(className), 260);
+    window.setTimeout(() => unit.el?.classList.remove(className), 300);
   }
 
   function flashHit(unit) {
@@ -1790,83 +1812,56 @@
     }
   }
 
-  function heroAttack(hero, targets) {
-    const target = pick(targets);
-    if (!target) return;
+  function heroAttack(hero, target) {
+    if (!target || !target.alive) return;
     const crit = Math.random() < 0.12;
-    const base = hero.atk * rand(0.9, 1.1) * (crit ? 1.68 : 1);
-    const ranged = ['mica', 'sable', 'orin'].includes(hero.id);
+    const damage = hero.atk * rand(0.9, 1.1) * (crit ? 1.68 : 1);
 
-    if (ranged) {
-      playLunge(hero, 'right');
+    if (isRangedUnit(hero)) {
+      playStrike(hero, 'right');
       addProjectile(unitPoint(hero), unitPoint(target), false);
       window.setTimeout(() => {
         if (!battle || battle.over || !target.alive) return;
         addSlash(unitPoint(target), false);
-        damageEnemy(target, base, crit);
+        damageEnemy(target, damage, crit);
         sfx(crit ? 'crit' : 'hit');
       }, 230);
       return;
     }
 
-    const off = -7 - (hero.slot % 2 ? 3.5 : 0);
-    walkUnit(hero, clamp(target.x + off, 5, 95), target.y, () => {
-      if (!battle || battle.over || !target.alive || !hero.alive) {
-        walkHome(hero);
-        return;
-      }
-      playLunge(hero, 'right');
-      window.setTimeout(() => {
-        if (target.alive) addSlash(unitPoint(target), false);
-      }, 70);
-      window.setTimeout(() => {
-        if (!battle || battle.over || !target.alive) return;
-        damageEnemy(target, base, crit);
-        sfx(crit ? 'crit' : 'hit');
-      }, 100);
-      window.setTimeout(() => {
-        if (hero.alive && !hero.wt) walkHome(hero);
-      }, 170);
-    }, target, off);
+    playStrike(hero, 'right');
+    window.setTimeout(() => {
+      if (!battle || battle.over || !target.alive) return;
+      addSlash(unitPoint(target), false);
+      damageEnemy(target, damage, crit);
+      sfx(crit ? 'crit' : 'hit');
+    }, 110);
   }
 
-  function enemyAttack(enemy, targets) {
-    const target = pick(targets);
-    if (!target) return;
-    const ranged = ['spider', 'wraith'].includes(enemy.key);
+  function enemyAttack(enemy, target) {
+    if (!target || !target.alive) return;
+    const damage = enemy.atk * rand(0.9, 1.14);
 
-    if (ranged) {
-      playLunge(enemy, 'left');
+    if (isRangedUnit(enemy)) {
+      playStrike(enemy, 'left');
       addProjectile(unitPoint(enemy), unitPoint(target), true);
       window.setTimeout(() => {
         if (!battle || battle.over || !target.alive) return;
-        damageHero(target, enemy.atk * rand(0.9, 1.14));
+        damageHero(target, damage);
         sfx(enemy.boss ? 'crit' : 'hurt');
       }, 230);
       if (enemy.boss) arenaQuake();
       return;
     }
 
-    const off = 7 + (enemy.slot % 2 ? 3.5 : 0);
-    walkUnit(enemy, clamp(target.x + off, 5, 95), target.y, () => {
-      if (!battle || battle.over || !target.alive || !enemy.alive) {
-        walkHome(enemy);
-        return;
-      }
-      playLunge(enemy, 'left');
-      window.setTimeout(() => {
-        if (target.alive) addSlash(unitPoint(target), true);
-      }, 70);
-      window.setTimeout(() => {
-        if (!battle || battle.over || !target.alive) return;
-        damageHero(target, enemy.atk * rand(0.9, 1.14));
-        sfx(enemy.boss ? 'crit' : 'hurt');
-        if (enemy.boss) arenaQuake();
-      }, 100);
-      window.setTimeout(() => {
-        if (enemy.alive && !enemy.wt) walkHome(enemy);
-      }, 170);
-    }, target, off);
+    playStrike(enemy, 'left');
+    window.setTimeout(() => {
+      if (!battle || battle.over || !target.alive) return;
+      addSlash(unitPoint(target), true);
+      damageHero(target, damage);
+      sfx(enemy.boss ? 'crit' : 'hurt');
+      if (enemy.boss) arenaQuake();
+    }, 110);
   }
 
   function damageEnemy(enemy, amount, crit = false) {
@@ -1890,9 +1885,9 @@
     syncHealth(hero);
     if (hero.hp <= 0) {
       hero.alive = false;
-      cancelWalk(hero);
       hero.el?.classList.add('dead');
       hero.el?.classList.remove('ready');
+      hero.labelEl?.classList.add('dead');
       sfx('lose');
     }
   }
@@ -1900,9 +1895,9 @@
   function killEnemy(enemy, point) {
     if (!enemy.alive || !battle) return;
     enemy.alive = false;
-    cancelWalk(enemy);
     enemy.el?.classList.add('dying');
     enemy.el?.classList.remove('ready');
+    enemy.labelEl?.classList.add('dying');
     const type = ENEMY_TYPES[enemy.key];
     const reward = Math.round((12 + battle.depth * 3) * type.coins);
     battle.coinsEarned += reward;
@@ -2014,8 +2009,6 @@
     battle.over = true;
     battle.ending = true;
     cancelAnimationFrame(battleRaf);
-    battle.heroes.forEach(cancelWalk);
-    battle.enemies.forEach(cancelWalk);
 
     const depth = battle.depth;
     let totalCoins = battle.coinsEarned;

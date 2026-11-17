@@ -1624,8 +1624,44 @@ svg {
   cursor: pointer;
 }
 
-.battle-unit .unit-name {
-  max-width: 84px;
+/* Plates live in their own layer above every fighter, so a front-row sprite
+   can never clip the hero names or the damage readout. */
+.unit-labels {
+  position: absolute;
+  z-index: 12;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.unit-label {
+  position: absolute;
+  top: calc(var(--y) * 1%);
+  left: calc(var(--x) * 1%);
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 2px;
+  transform: translate(-50%, -100%);
+  transition: opacity 0.3s ease;
+}
+
+.unit-label.hero {
+  --lift: clamp(57.5px, 17.5vw, 77.5px);
+  transform: translate(calc(-50% - 7px), calc(-100% - var(--lift) - 3px));
+}
+
+.unit-label.enemy {
+  --lift: clamp(42px, 12.5vw, 56px);
+  transform: translate(calc(-50% + 7px), calc(-100% - var(--lift) - 3px));
+}
+
+.unit-label.enemy.boss {
+  --lift: clamp(64px, 19vw, 88px);
+}
+
+.unit-label .label-name {
+  max-width: 78px;
   overflow: hidden;
   padding: 0 3px;
   color: #dbcdb9;
@@ -1635,13 +1671,14 @@ svg {
   line-height: 1;
   text-align: center;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.75);
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-.battle-unit.enemy .unit-name {
-  color: #d7a694;
+.unit-label.dead,
+.unit-label.dying {
+  opacity: 0;
 }
 
 .unit-figure {
@@ -1739,14 +1776,9 @@ svg {
   filter: drop-shadow(0 0 12px rgba(219, 119, 56, 0.45)) drop-shadow(0 3px 3px rgba(0, 0, 0, 0.5));
 }
 
-.battle-unit.boss .unit-health {
+.unit-label.boss .unit-health {
   width: 66px;
   height: 5px;
-}
-
-.battle-unit.boss .unit-name {
-  color: #f1b67e;
-  font-size: 7px;
 }
 
 .battle-unit.dead {
@@ -1796,17 +1828,32 @@ svg {
   z-index: 8;
 }
 
-.battle-unit.lunge-right { animation: lunge-right 0.26s ease-out; }
-.battle-unit.lunge-left { animation: lunge-left 0.26s ease-out; }
-
-@keyframes lunge-right {
-  0%, 100% { transform: translate(-50%, -100%); }
-  45% { transform: translate(calc(-50% + 7px), calc(-100% - 2px)) scale(1.06); }
+.battle-unit .unit-figure {
+  transform-origin: 50% 100%;
 }
 
-@keyframes lunge-left {
-  0%, 100% { transform: translate(-50%, -100%); }
-  45% { transform: translate(calc(-50% - 7px), calc(-100% - 2px)) scale(1.06); }
+.battle-unit.strike-right .unit-figure { animation: strike-right 0.3s ease-out; }
+.battle-unit.strike-left .unit-figure { animation: strike-left 0.3s ease-out; }
+
+@keyframes strike-right {
+  0%, 100% { transform: none; }
+  30% { transform: translate(4px, -1px) rotate(3.5deg); }
+  56% { transform: translate(-1px, 1px) rotate(-1.2deg); }
+}
+
+@keyframes strike-left {
+  0%, 100% { transform: none; }
+  30% { transform: translate(-4px, -1px) rotate(-3.5deg); }
+  56% { transform: translate(1px, 1px) rotate(1.2deg); }
+}
+
+.battle-unit:not(.walking):not(.dying) .unit-sprite {
+  animation: battle-idle 2.6s ease-in-out infinite;
+}
+
+@keyframes battle-idle {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.018) translateY(-0.5px); }
 }
 
 .battle-unit.hit {
