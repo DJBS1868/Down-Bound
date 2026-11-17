@@ -85,19 +85,21 @@
     5: [[18, 57], [36, 44], [54, 60], [72, 45], [87, 61]]
   };
 
+  /* Battle formations: [x% across arena, floor depth 0 (back) .. 1 (front)].
+     y is derived from the arena's floor line at fight time. */
   const HERO_FORMATIONS = {
-    1: [[28, 57]],
-    2: [[22, 45], [35, 69]],
-    3: [[18, 39], [32, 59], [18, 77]],
-    4: [[18, 33], [33, 47], [18, 67], [34, 80]],
-    5: [[15, 28], [30, 40], [16, 55], [32, 68], [19, 82]]
+    1: [[28, 0.5]],
+    2: [[22, 0.28], [36, 0.78]],
+    3: [[18, 0.2], [32, 0.55], [17, 0.9]],
+    4: [[18, 0.16], [33, 0.45], [17, 0.72], [34, 0.97]],
+    5: [[15, 0.1], [30, 0.35], [16, 0.6], [32, 0.84], [19, 1]]
   };
 
   const ENEMY_FORMATIONS = {
-    1: [[79, 53]],
-    2: [[76, 39], [88, 66]],
-    3: [[74, 29], [89, 51], [77, 72]],
-    4: [[72, 26], [88, 41], [74, 59], [89, 76]]
+    1: [[79, 0.42]],
+    2: [[76, 0.24], [88, 0.76]],
+    3: [[74, 0.16], [89, 0.52], [77, 0.88]],
+    4: [[72, 0.1], [88, 0.4], [74, 0.66], [89, 0.94]]
   };
 
   const ICONS = {
@@ -279,6 +281,172 @@
   }
 
   /* =========================================================
+     BATTLE SPRITE ART — full-body characters for the arena
+     ========================================================= */
+
+  function heroSpriteSvg(hero) {
+    const art = {
+      pip: `
+        <rect x="23" y="54" width="8" height="16" rx="3" fill="#3f5878"/>
+        <rect x="33" y="54" width="8" height="16" rx="3" fill="#46648c"/>
+        <rect x="20" y="68" width="13" height="6" rx="2.5" fill="#2c211a"/>
+        <rect x="31" y="68" width="13" height="6" rx="2.5" fill="#2c211a"/>
+        <path d="M21 38c0-7 5-11 11-11s11 4 11 11v14c0 3-2 5-5 5H26c-3 0-5-2-5-5Z" fill="#8a5636"/>
+        <path d="M26 38h12v19H26z" fill="#46648c"/>
+        <path d="M26 38h12v4H26z" fill="#3a5270"/>
+        <circle cx="29.5" cy="45" r="1.4" fill="#e0c06a"/><circle cx="34.5" cy="45" r="1.4" fill="#e0c06a"/>
+        <rect x="20" y="42" width="6" height="13" rx="3" fill="#7a4a2c"/>
+        <rect x="38" y="33" width="6" height="14" rx="3" transform="rotate(40 41 40)" fill="#8a5636"/>
+        <circle cx="45" cy="30" r="2.7" fill="#d9a06b"/>
+        <path d="M44 32 52 12" stroke="#6e4a28" stroke-width="3.4" stroke-linecap="round"/>
+        <path d="M45 10c6-4 12-2 15 3-4 0-9 2-12 5Z" fill="#c3ccd2"/>
+        <circle cx="32" cy="24" r="7.5" fill="#d9a06b"/>
+        <path d="M25 25c0 6 3 10 7 10s7-4 7-10c-2 2-4 3-7 3s-5-1-7-3Z" fill="#b6b0a3"/>
+        <circle cx="29.5" cy="23" r="1.3" fill="#2a1d14"/><circle cx="34.5" cy="23" r="1.3" fill="#2a1d14"/>
+        <path d="M23 18c1-6 5-9 9-9s8 3 9 9c-3-2-6-3-9-3s-6 1-9 3Z" fill="#e6b53c"/>
+        <rect x="20" y="17" width="24" height="3.4" rx="1.7" fill="#d8a72e"/>
+        <circle cx="38" cy="12" r="1.6" fill="#f4d97a"/>`,
+      nyx: `
+        <rect x="26" y="56" width="5.5" height="14" rx="2.5" fill="#1d2b31"/>
+        <rect x="33" y="56" width="5.5" height="14" rx="2.5" fill="#22333a"/>
+        <rect x="24" y="68" width="10" height="5" rx="2" fill="#141d21"/>
+        <rect x="31" y="68" width="10" height="5" rx="2" fill="#141d21"/>
+        <path d="M25 36c0-6 3-10 7-10s7 4 7 10l1 16c0 3-2 5-4 5h-8c-2 0-4-2-4-5Z" fill="#2c4149"/>
+        <path d="M25 36c4-3 10-3 14 0v5c-4-2-10-2-14 0Z" fill="#22333a"/>
+        <rect x="22" y="38" width="5" height="12" rx="2.5" fill="#2c4149"/>
+        <circle cx="24.5" cy="51" r="2" fill="#c9a07a"/>
+        <path d="M24.5 51l-5.4-6.2 2.4-2 5.2 6Z" fill="#c9d4d8"/>
+        <rect x="37" y="38" width="5" height="12" rx="2.5" transform="rotate(26 39.5 44)" fill="#354d55"/>
+        <circle cx="43.5" cy="51.5" r="2.2" fill="#c9a07a"/>
+        <path d="M45.5 53.5l6 6-2.3 2.2-6-6Z" fill="#c9d4d8"/>
+        <circle cx="32" cy="23" r="7" fill="#171f23"/>
+        <ellipse cx="32" cy="25" rx="4.4" ry="4" fill="#0d1315"/>
+        <circle cx="30" cy="24.5" r="1.1" fill="#8fe8d8"/><circle cx="34.6" cy="24.5" r="1.1" fill="#8fe8d8"/>
+        <path d="M25 21c0-5.5 3-9.5 7-9.5s7 4 7 9.5c-2-2.5-4-3.5-7-3.5s-5 1-7 3.5Z" fill="#2c4149"/>
+        <path d="M23 27c2 8 5 12 9 13l-1.5 6c-7-3.5-10-10-10-19Z" fill="#22333a"/>`,
+      bram: `
+        <rect x="22" y="56" width="8" height="14" rx="3" fill="#3a3f47"/>
+        <rect x="32" y="56" width="8" height="14" rx="3" fill="#43494f"/>
+        <rect x="19" y="68" width="13" height="6" rx="2.5" fill="#262b31"/>
+        <rect x="30" y="68" width="13" height="6" rx="2.5" fill="#262b31"/>
+        <path d="M20 40c0-8 5-13 12-13s12 5 12 13v14c0 3-2 5-5 5H25c-3 0-5-2-5-5Z" fill="#5b636e"/>
+        <path d="M20 40c4-3 20-3 24 0l-1 5c-7-2-15-2-22 0Z" fill="#495059"/>
+        <circle cx="27" cy="47" r="1.5" fill="#8f9aa5"/><circle cx="37" cy="47" r="1.5" fill="#8f9aa5"/>
+        <rect x="21" y="42" width="6" height="12" rx="3" fill="#525a64"/>
+        <circle cx="32" cy="23" r="8" fill="#d9a06b"/>
+        <path d="M25 26c0 5 3 9 7 9s7-4 7-9c-2 2-12 2-14 0Z" fill="#c96f3a"/>
+        <circle cx="29" cy="22" r="1.4" fill="#2a1d14"/><circle cx="35" cy="22" r="1.4" fill="#2a1d14"/>
+        <path d="M24 20c0-7 4-10 8-10s8 3 8 10l-2-1c0-5-2-7-6-7s-6 2-6 7Z" fill="#6b727b"/>
+        <rect x="23" y="19" width="18" height="3" rx="1.5" fill="#7d8590"/>
+        <path d="M31 20h2v6h-2z" fill="#5b636e"/>
+        <rect x="42" y="30" width="16" height="34" rx="4" fill="#7a4a2e"/>
+        <rect x="44.5" y="32.5" width="11" height="29" rx="2.5" fill="#8d5a38"/>
+        <rect x="42" y="30" width="16" height="34" rx="4" fill="none" stroke="#4a4f57" stroke-width="2.4"/>
+        <circle cx="50" cy="45" r="3.4" fill="#9aa4ae"/>`,
+      mica: `
+        <ellipse cx="27" cy="75" rx="3.6" ry="2" fill="#2a2130"/>
+        <ellipse cx="37" cy="75" rx="3.6" ry="2" fill="#2a2130"/>
+        <path d="M24 44c0-9 4-14 8-14s8 5 8 14l2 26c0 3-2 5-4 5H26c-2 0-4-2-4-5Z" fill="#46395f"/>
+        <path d="M24 44c4-3 12-3 16 0v4c-5-2-11-2-16 0Z" fill="#5a4a78"/>
+        <path d="M25 52c4 2 10 2 14 0l1 4c-5 2-11 2-16 0Z" fill="#3a2f4e"/>
+        <circle cx="30" cy="54" r="1.6" fill="#e0c06a"/>
+        <rect x="20" y="38" width="5" height="12" rx="2.5" transform="rotate(16 22.5 44)" fill="#46395f"/>
+        <circle cx="22" cy="36" r="2.2" fill="#dcb48c"/>
+        <path d="M22 10v44" stroke="#6e5a40" stroke-width="3" stroke-linecap="round"/>
+        <path d="M22 8c-4 2-5 6-3 9 2-2 5-3 8-3-2-2-3-4-5-6Z" fill="#7fe0d0"/>
+        <circle cx="21.5" cy="10" r="3.2" fill="#aef0e2" opacity=".5"/>
+        <rect x="39" y="40" width="5" height="12" rx="2.5" transform="rotate(-18 41.5 46)" fill="#5a4a78"/>
+        <circle cx="41.5" cy="41" r="2.2" fill="#dcb48c"/>
+        <circle cx="32" cy="25" r="7.5" fill="#e3bd97"/>
+        <path d="M24 22c1-7 5-10 8-10s7 3 8 10c1 5-1 9-2 10l-1-6c-3 2-9 2-12 0l-1 6c-1-1-3-5 0-10Z" fill="#cbb6d8"/>
+        <circle cx="29.5" cy="25" r="1.3" fill="#2a1d28"/><circle cx="34.5" cy="25" r="1.3" fill="#2a1d28"/>
+        <path d="M30 29q2 1.5 4 0" stroke="#a06a5a" stroke-width="1.2" fill="none" stroke-linecap="round"/>`,
+      sable: `
+        <rect x="26" y="56" width="5.5" height="14" rx="2.5" fill="#3c3126"/>
+        <rect x="33" y="56" width="5.5" height="14" rx="2.5" fill="#453a2c"/>
+        <rect x="24" y="68" width="10" height="5" rx="2" fill="#241d15"/>
+        <rect x="31" y="68" width="10" height="5" rx="2" fill="#241d15"/>
+        <path d="M25 36c0-6 3-10 7-10s7 4 7 10l1 18c0 3-2 5-4 5h-8c-2 0-4-2-4-5Z" fill="#4e6b40"/>
+        <path d="M20 30l9-7 3 4-9 7z" fill="#5d4a30"/>
+        <path d="M22 25l5 7" stroke="#c9c2b0" stroke-width="1.3"/>
+        <path d="M22 25l-3-4" stroke="#b34a3c" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M26 22l-3-4" stroke="#d8c98e" stroke-width="2.6" stroke-linecap="round"/>
+        <rect x="21" y="38" width="5" height="11" rx="2.5" fill="#44603a"/>
+        <rect x="38" y="36" width="5" height="12" rx="2.5" transform="rotate(32 40.5 42)" fill="#5d7a4c"/>
+        <circle cx="46" cy="44" r="2.5" fill="#d9a06b"/>
+        <path d="M46 26c8 6 8 30 0 36" fill="none" stroke="#8a6a3e" stroke-width="3" stroke-linecap="round"/>
+        <path d="M46 26v36" stroke="#d8d2c0" stroke-width="1.2"/>
+        <path d="M46 44h13" stroke="#d8d2c0" stroke-width="1.4"/>
+        <path d="M59 44l-4-2.4v4.8Z" fill="#c9d4d8"/>
+        <circle cx="32" cy="23" r="7" fill="#d9a06b"/>
+        <path d="M25 22c0-6 3-10 7-10s7 4 7 10l-1 8c-1-3-2-4-3-5-2 1-5 1-7 0-1 1-2 2-3 5Z" fill="#4e6b40"/>
+        <ellipse cx="32" cy="25" rx="4.2" ry="3.8" fill="#c98a5e"/>
+        <circle cx="30.5" cy="24.5" r="1.1" fill="#2a1d14"/><circle cx="34.5" cy="24.5" r="1.1" fill="#2a1d14"/>`,
+      flint: `
+        <rect x="24" y="54" width="8" height="16" rx="3" fill="#33302e"/>
+        <rect x="33" y="54" width="8" height="16" rx="3" fill="#3a3734"/>
+        <rect x="21" y="68" width="13" height="6" rx="2.5" fill="#1e1b19"/>
+        <rect x="31" y="68" width="13" height="6" rx="2.5" fill="#1e1b19"/>
+        <path d="M23 34c0-6 4-10 9-10s9 4 9 10v12c0 3-2 5-5 5H28c-3 0-5-2-5-5Z" fill="#c98a5e"/>
+        <path d="M23 38c4 2 14 2 18 0v4c-5 2-13 2-18 0Z" fill="#a86f48"/>
+        <path d="M26 31l8 6" stroke="#8a5442" stroke-width="1.6" stroke-linecap="round"/>
+        <rect x="18" y="34" width="6" height="13" rx="3" transform="rotate(18 21 40)" fill="#c98a5e"/>
+        <circle cx="16.5" cy="49" r="2.8" fill="#b8452f"/>
+        <rect x="40" y="31" width="6" height="13" rx="3" transform="rotate(-54 43 37.5)" fill="#c98a5e"/>
+        <circle cx="49.5" cy="25.5" r="3.2" fill="#b8452f"/>
+        <circle cx="32" cy="22" r="7.5" fill="#c98a5e"/>
+        <path d="M25 19c1-6 4-9 7-9s6 3 7 9l-2-2c-3 1-7 1-10 0Z" fill="#211c1a"/>
+        <path d="M24 16.5h16v2.5H24z" fill="#b8452f"/>
+        <circle cx="29.5" cy="23" r="1.3" fill="#2a1d14"/><circle cx="34.5" cy="23" r="1.3" fill="#2a1d14"/>
+        <path d="M30 27q2.5 2 5 0" stroke="#7a4a34" stroke-width="1.3" fill="none" stroke-linecap="round"/>`,
+      wren: `
+        <rect x="26" y="58" width="5.5" height="13" rx="2.5" fill="#5d4a34"/>
+        <rect x="33" y="58" width="5.5" height="13" rx="2.5" fill="#6a5540"/>
+        <rect x="24" y="69" width="10" height="5" rx="2" fill="#3a2d20"/>
+        <rect x="31" y="69" width="10" height="5" rx="2" fill="#3a2d20"/>
+        <path d="M24 36c0-6 3-10 8-10s8 4 8 10v20c0 3-2 5-5 5H29c-3 0-5-2-5-5Z" fill="#d8d2c0"/>
+        <path d="M24 36c4-2 12-2 16 0l-1 4c-4-1-10-1-14 0Z" fill="#c2bba6"/>
+        <path d="M32 39v8M28.5 43h7" stroke="#b8452f" stroke-width="2.2"/>
+        <path d="M26 34c4-2 10-2 13 1l-2.5 3c-3-2-6-2-9-1Z" fill="#7a5a38"/>
+        <path d="M38 45h7l-1 8h-5Z" fill="#7a5a38"/>
+        <rect x="20" y="38" width="5" height="12" rx="2.5" fill="#c2bba6"/>
+        <rect x="39" y="35" width="5" height="12" rx="2.5" transform="rotate(-32 41.5 41)" fill="#d8d2c0"/>
+        <circle cx="45" cy="30" r="2.4" fill="#dcb48c"/>
+        <rect x="43" y="23.5" width="5" height="7" rx="1.4" fill="#7fb8a8"/>
+        <rect x="44.4" y="21.4" width="2.2" height="3" fill="#6a5540"/>
+        <circle cx="32" cy="23" r="7.5" fill="#e3bd97"/>
+        <path d="M24 20c1-6 4-9 8-9s7 3 8 9l-2 1c0-4-2-6-6-6s-6 2-6 6Z" fill="#8a5a3a"/>
+        <path d="M25 16c1-5 4-8 7-8s6 3 7 8c-4-1.6-10-1.6-14 0Z" fill="#e6e0d0"/>
+        <path d="M31 10.5v3M29.5 12h3" stroke="#b8452f" stroke-width="1.6"/>
+        <circle cx="29.5" cy="23" r="1.3" fill="#2a1d14"/><circle cx="34.5" cy="23" r="1.3" fill="#2a1d14"/>
+        <path d="M30 27q2.5 2 5 0" stroke="#a06a5a" stroke-width="1.2" fill="none" stroke-linecap="round"/>`,
+      orin: `
+        <rect x="25" y="56" width="6" height="14" rx="2.5" fill="#4a3a28"/>
+        <rect x="33" y="56" width="6" height="14" rx="2.5" fill="#554430"/>
+        <rect x="22" y="68" width="12" height="6" rx="2.5" fill="#2c2118"/>
+        <rect x="30" y="68" width="12" height="6" rx="2.5" fill="#2c2118"/>
+        <path d="M23 36c0-6 4-10 9-10s9 4 9 10l2 24c0 3-2 5-5 5H26c-3 0-5-2-5-5Z" fill="#6b4a2e"/>
+        <path d="M23 36c4-2 14-2 18 0l-1 4c-5-1-11-1-16 0Z" fill="#584028"/>
+        <circle cx="27" cy="44" r="1.4" fill="#d8b564"/><circle cx="27" cy="50" r="1.4" fill="#d8b564"/>
+        <rect x="20" y="38" width="5" height="12" rx="2.5" fill="#5d4128"/>
+        <rect x="39" y="33" width="5" height="12" rx="2.5" transform="rotate(-42 41.5 39)" fill="#6b4a2e"/>
+        <circle cx="47" cy="26" r="2.6" fill="#dcb48c"/>
+        <circle cx="49" cy="20" r="5.5" fill="#2e2a26"/>
+        <circle cx="47" cy="18" r="1.6" fill="#4a4540"/>
+        <path d="M50.5 15q3-3 6-2" stroke="#8a6a3e" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <circle cx="57.5" cy="12.5" r="1.8" fill="#f5a04a"/>
+        <circle cx="32" cy="23" r="7.5" fill="#d9a06b"/>
+        <path d="M24 20c0-7 4-10 8-10s8 3 8 10l-2-1c0-4-2-6-6-6s-6 2-6 6Z" fill="#3a3128"/>
+        <rect x="23" y="18" width="18" height="3" rx="1.5" fill="#2e261f"/>
+        <circle cx="29" cy="21.5" r="3" fill="#c9973a" stroke="#8a6a3e" stroke-width="1.2"/>
+        <circle cx="36.5" cy="21.5" r="3" fill="#c9973a" stroke="#8a6a3e" stroke-width="1.2"/>
+        <path d="M31.8 21.5h1.9" stroke="#8a6a3e" stroke-width="1.6"/>
+        <circle cx="29" cy="21.5" r="1.4" fill="#5a4632"/><circle cx="36.5" cy="21.5" r="1.4" fill="#5a4632"/>`
+    };
+    return `<svg viewBox="0 0 64 80" aria-hidden="true">${art[hero.id] || art.pip}</svg>`;
+  }
+
+  /* =========================================================
      ENEMY ART
      ========================================================= */
 
@@ -299,6 +467,6 @@
     SAVE_KEY, MAX_SLOTS, SLOT_COSTS, SKILL_COOLDOWN, HERO_XP_BASE,
     HEROES, HERO_BY_ID, RARITY_LABEL, ENEMY_TYPES, DEPTH_NAMES,
     PAD_POSITIONS, HERO_FORMATIONS, ENEMY_FORMATIONS, ICONS,
-    portraitSvg, enemySvg
+    portraitSvg, enemySvg, heroSpriteSvg
   };
 })();
