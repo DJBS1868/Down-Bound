@@ -3577,7 +3577,7 @@ svg {
   opacity: 0.85;
 }
 
-@media (max-height: 840px) {
+@media (max-height: 840px), (min-width: 700px) and (max-height: 900px) {
   .surface-scene { flex-basis: clamp(158px, 24vh, 208px); }
   .hero-stats { display: none; }
   .hero-card .portrait { width: 34px; height: 34px; }
